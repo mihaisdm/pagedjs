@@ -1,0 +1,440 @@
+@page {
+  size: A4;
+  margin: 16mm 16mm 18mm 18mm;
+
+  @bottom-center {
+    content: counter(page);
+    font: 10pt/1.2 Calibri, "Helvetica Neue", Arial, sans-serif;
+    color: #8b95a7;
+  }
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #e7edf3;
+  color: #111827;
+}
+
+.export-status {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid #d1d5db;
+  background: #f8fafc;
+  color: #334155;
+  font: 600 13px/1.4 Arial, sans-serif;
+}
+
+body[data-print-ready="true"] .export-status {
+  display: none;
+}
+
+body[data-print-ready="error"] .export-status {
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.export-source {
+  position: absolute;
+  left: -200vw;
+  top: 0;
+  width: 210mm;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.export-scratch {
+  position: fixed;
+  inset: 0 auto auto 0;
+  width: 210mm;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: -1;
+}
+
+.export-preview {
+  min-height: 100vh;
+  padding: 0.75rem 0;
+}
+
+body[data-print-ready="false"] .export-preview::before {
+  content: "Paginating manual...";
+  display: block;
+  padding: 0.75rem 1rem;
+  font: 600 14px/1.4 Arial, sans-serif;
+  color: #4b5563;
+}
+
+.export-source .print-manual,
+.print-output {
+  color: #111827;
+  font-family: Calibri, "Helvetica Neue", Arial, sans-serif;
+  font-size: 11pt;
+  line-height: 1.35;
+}
+
+.export-source .print-manual h1,
+.export-source .print-manual h2,
+.export-source .print-manual h3,
+.export-source .print-manual h4,
+.print-output h1,
+.print-output h2,
+.print-output h3,
+.print-output h4 {
+  font-family: Calibri, "Helvetica Neue", Arial, sans-serif;
+  font-weight: 700;
+  line-height: 1.12;
+  break-after: avoid-page;
+  page-break-after: avoid;
+}
+
+.export-source .print-manual h1,
+.print-output h1 {
+  color: #111827;
+  font-size: 27pt;
+  margin-top: 0;
+  margin-bottom: 0.45rem;
+}
+
+h1.print-chapter-title--top-level {
+  color: #289b7c !important;
+}
+
+h1.print-chapter-title--nested {
+  color: #111827;
+  font-size: 21pt;
+}
+
+.export-source .print-manual h2,
+.print-output h2 {
+  color: #111827;
+  font-size: 21pt;
+  margin-top: 1.35rem;
+  margin-bottom: 0.4rem;
+}
+
+.export-source .print-manual h3,
+.export-source .print-manual h4,
+.print-output h3,
+.print-output h4 {
+  color: #111827;
+  font-size: 14pt;
+  margin-top: 1rem;
+  margin-bottom: 0.35rem;
+}
+
+.export-source .print-manual p,
+.export-source .print-manual li,
+.export-source .print-manual td,
+.export-source .print-manual th,
+.print-output p,
+.print-output li,
+.print-output td,
+.print-output th {
+  font-size: 11pt;
+}
+
+.export-source .print-manual a,
+.print-output a {
+  color: #2f6eb5;
+  text-decoration: none;
+}
+
+.export-source .print-manual img,
+.print-output img {
+  max-width: 100%;
+  height: auto;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.export-source .print-manual table,
+.print-output table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.8rem 0 1rem;
+  font-size: 9.8pt;
+  line-height: 1.22;
+  table-layout: auto;
+}
+
+.export-source .print-manual th,
+.export-source .print-manual td,
+.print-output th,
+.print-output td {
+  border: 1px solid #b8c0ca;
+  padding: 0.24rem 0.34rem;
+  vertical-align: top;
+}
+
+.export-source .print-manual th,
+.print-output th {
+  background: #f2f5f7;
+  color: #1f2937;
+  font-weight: 700;
+}
+
+.export-source .print-manual td > p:first-child,
+.export-source .print-manual th > p:first-child,
+.print-output td > p:first-child,
+.print-output th > p:first-child {
+  margin-top: 0;
+}
+
+.export-source .print-manual td > p:last-child,
+.export-source .print-manual th > p:last-child,
+.print-output td > p:last-child,
+.print-output th > p:last-child {
+  margin-bottom: 0;
+}
+
+.export-source .print-manual td ul,
+.export-source .print-manual td ol,
+.print-output td ul,
+.print-output td ol {
+  margin: 0.1rem 0 0.05rem;
+  padding-left: 0.95rem;
+}
+
+.export-source .print-manual td li,
+.export-source .print-manual td li + li,
+.print-output td li,
+.print-output td li + li {
+  margin-top: 0.04rem;
+}
+
+.export-source .print-manual table.print-table--schema,
+.print-output table.print-table--schema {
+  table-layout: fixed;
+  font-size: 9.1pt;
+  line-height: 1.15;
+  border: 1px solid #9ca3af;
+}
+
+.export-source .print-manual table.print-table--schema th,
+.export-source .print-manual table.print-table--schema td,
+.print-output table.print-table--schema th,
+.print-output table.print-table--schema td {
+  padding: 0.14rem 0.24rem;
+  border-color: #aeb6c1;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+
+.export-source .print-manual table.print-table--schema th,
+.print-output table.print-table--schema th {
+  background: #2f9f88;
+  color: #ffffff;
+  font-size: 8.9pt;
+  line-height: 1.02;
+}
+
+.export-source .print-manual table.print-table--schema td,
+.print-output table.print-table--schema td {
+  background: #ffffff;
+}
+
+.export-source .print-manual table.print-table--schema th:nth-child(1),
+.export-source .print-manual table.print-table--schema td:nth-child(1),
+.print-output table.print-table--schema th:nth-child(1),
+.print-output table.print-table--schema td:nth-child(1) {
+  width: 31%;
+}
+
+.export-source .print-manual table.print-table--schema th:nth-child(2),
+.export-source .print-manual table.print-table--schema td:nth-child(2),
+.print-output table.print-table--schema th:nth-child(2),
+.print-output table.print-table--schema td:nth-child(2) {
+  width: 11%;
+}
+
+.export-source .print-manual table.print-table--schema th:nth-child(3),
+.export-source .print-manual table.print-table--schema td:nth-child(3),
+.print-output table.print-table--schema th:nth-child(3),
+.print-output table.print-table--schema td:nth-child(3) {
+  width: 10%;
+  text-align: center;
+}
+
+.export-source .print-manual table.print-table--schema th:nth-child(4),
+.export-source .print-manual table.print-table--schema td:nth-child(4),
+.print-output table.print-table--schema th:nth-child(4),
+.print-output table.print-table--schema td:nth-child(4) {
+  width: 42%;
+}
+
+.export-source .print-manual table.print-table--schema th:nth-child(5),
+.export-source .print-manual table.print-table--schema td:nth-child(5),
+.print-output table.print-table--schema th:nth-child(5),
+.print-output table.print-table--schema td:nth-child(5) {
+  width: 8%;
+}
+
+.export-source .print-manual table.print-table--schema td ul,
+.export-source .print-manual table.print-table--schema td ol,
+.print-output table.print-table--schema td ul,
+.print-output table.print-table--schema td ol {
+  margin: 0;
+  padding-left: 0.9rem;
+}
+
+.export-source .print-manual table.print-table--schema td li,
+.print-output table.print-table--schema td li {
+  line-height: 1.04;
+  margin-top: 0;
+}
+
+.export-source .print-manual pre,
+.export-source .print-manual code,
+.print-output pre,
+.print-output code {
+  font-family: Consolas, "Courier New", monospace;
+}
+
+.export-source .print-manual pre,
+.print-output pre {
+  overflow: hidden;
+  white-space: pre-wrap;
+  border: 1px solid #d8dee9;
+  background: #f6f8fb;
+  padding: 0.7rem 0.8rem;
+  font-size: 10pt;
+}
+
+.export-source .print-manual blockquote,
+.print-output blockquote {
+  margin: 0.8rem 0;
+  padding-left: 0.9rem;
+  border-left: 3px solid #289b7c;
+  color: #334155;
+}
+
+.print-cover {
+  min-height: 240mm;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-bottom: 1px solid #d1d5db;
+}
+
+.print-cover__eyebrow {
+  margin: 0 0 0.5rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font: 700 10pt/1.2 Calibri, "Helvetica Neue", Arial, sans-serif;
+  color: #6b7280;
+}
+
+.print-cover h1 {
+  color: #162441;
+  font-family: "Arial Black", Arial, Calibri, sans-serif;
+  font-size: 30pt;
+  line-height: 1.05;
+  margin: 0 0 0.5rem;
+}
+
+.print-cover p:last-child {
+  margin: 0;
+  color: #334155;
+}
+
+.print-toc {
+  break-before: page;
+  page-break-before: always;
+}
+
+.print-toc h2 {
+  color: #289b7c;
+  font-size: 30pt;
+  margin-bottom: 1rem;
+}
+
+.print-toc ol {
+  list-style: decimal;
+  padding-left: 1.5rem;
+}
+
+.print-toc li {
+  margin: 0 0 0.35rem;
+}
+
+.print-toc a {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.print-toc a::after {
+  content: " " target-counter(attr(href), page);
+  float: right;
+  font-weight: 400;
+}
+
+.print-chapter {
+  break-before: auto;
+  page-break-before: auto;
+  padding-top: 2mm;
+}
+
+.print-chapter--top-level {
+  break-before: page;
+  page-break-before: always;
+}
+
+.print-chapter:first-of-type {
+  break-before: auto;
+  page-break-before: auto;
+}
+
+.pagedjs_pages {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.pagedjs_page {
+  background: #ffffff;
+  margin: 0 auto 1.5rem;
+  margin-bottom: 20px !important;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.14);
+}
+
+@media print {
+  body[data-print-ready="false"] .export-preview::before {
+    display: none;
+  }
+
+  .export-source {
+    display: none !important;
+  }
+
+  .export-preview {
+    padding: 0;
+  }
+
+  .pagedjs_pages {
+    display: block !important;
+    gap: 0 !important;
+  }
+
+  .pagedjs_page {
+    break-after: page !important;
+    page-break-after: always !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    margin: 0 auto !important;
+    box-shadow: none !important;
+  }
+
+  .pagedjs_page:last-child {
+    break-after: auto !important;
+    page-break-after: auto !important;
+  }
+}

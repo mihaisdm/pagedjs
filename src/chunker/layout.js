@@ -30,6 +30,39 @@ import Hook from "../utils/hook.js";
 
 const MAX_CHARS_PER_BREAK = 1500;
 
+function describeNodeForDebug(node) {
+	if (typeof window !== "undefined" && typeof window.__PRINT_DESCRIBE_NODE__ === "function") {
+		return window.__PRINT_DESCRIBE_NODE__(node);
+	}
+
+	return node;
+}
+
+function describeBreakTokenForDebug(token) {
+	if (!token) {
+		return null;
+	}
+
+	let serialized = null;
+	if (typeof token.toJSON === "function") {
+		try {
+			serialized = JSON.parse(token.toJSON());
+		} catch (error) {
+			serialized = token.toJSON();
+		}
+	}
+
+	return {
+		offset: token.offset,
+		serialized,
+		node: describeNodeForDebug(token.node),
+	};
+}
+
+function logUnableToLayout(details) {
+	console.warn("Unable to layout item " + JSON.stringify(details));
+}
+
 /**
  * Layout
  * @class
@@ -106,7 +139,12 @@ class Layout {
 				newBreakToken = this.findBreakToken(wrapper, source, bounds, prevBreakToken);
 
 				if (newBreakToken && newBreakToken.equals(prevBreakToken)) {
-					console.warn("Unable to layout item: ", prevNode);
+					logUnableToLayout({
+						reason: "end-of-content-no-progress",
+						node: describeNodeForDebug(prevNode),
+						prevBreakToken: describeBreakTokenForDebug(prevBreakToken),
+						newBreakToken: describeBreakTokenForDebug(newBreakToken),
+					});
 					this.hooks && this.hooks.beforeRenderResult.trigger(undefined, wrapper, this);
 					return new RenderResult(undefined, new OverflowContentError("Unable to layout item", [prevNode]));
 				}
@@ -137,7 +175,12 @@ class Layout {
 				}
 
 				if (newBreakToken && newBreakToken.equals(prevBreakToken)) {
-					console.warn("Unable to layout item: ", node);
+					logUnableToLayout({
+						reason: "forced-break-no-progress",
+						node: describeNodeForDebug(node),
+						prevBreakToken: describeBreakTokenForDebug(prevBreakToken),
+						newBreakToken: describeBreakTokenForDebug(newBreakToken),
+					});
 					let after = newBreakToken.node && nodeAfter(newBreakToken.node);
 					if (after) {
 						newBreakToken = new BreakToken(after);
@@ -214,13 +257,36 @@ class Layout {
 				}
 
 				if (newBreakToken && newBreakToken.equals(prevBreakToken)) {
-					console.warn("Unable to layout item: ", node);
-					let after = newBreakToken.node && nodeAfter(newBreakToken.node);
-					if (after) {
-						newBreakToken = new BreakToken(after);
+					// The repeated token means createBreakToken() mapped the current overflow
+					// back to the previous page's source position. Our fallback below can still
+					// advance the source token, but without extracting the current overflow the
+					// rendered page keeps its hidden extra columns and split-original tables end
+					// up shifted far to the right. Re-run extraction without the loop guard so
+					// the current page is trimmed before we switch to the fallback token.
+					let fallbackBreakToken = node && this.breakAt(node);
+
+					if (fallbackBreakToken && !fallbackBreakToken.equals(prevBreakToken)) {
+						let removed = this.trimRenderedAfterSourceNode(fallbackBreakToken.node, wrapper);
+						if (removed) {
+							this.hooks && this.hooks.afterOverflowRemoved.trigger(removed, wrapper, this);
+						}
+						newBreakToken = fallbackBreakToken;
 					} else {
-						this.hooks && this.hooks.beforeRenderResult.trigger(undefined, wrapper, this);
-						return new RenderResult(undefined, new OverflowContentError("Unable to layout item", [node]));
+						logUnableToLayout({
+							reason: "max-chars-no-progress",
+							node: describeNodeForDebug(node),
+							prevBreakToken: describeBreakTokenForDebug(prevBreakToken),
+							newBreakToken: describeBreakTokenForDebug(newBreakToken),
+							fallbackBreakToken: describeBreakTokenForDebug(fallbackBreakToken),
+							length,
+							maxChars: this.maxChars,
+						});
+						if (fallbackBreakToken) {
+							newBreakToken = fallbackBreakToken;
+						} else {
+						  this.hooks && this.hooks.beforeRenderResult.trigger(undefined, wrapper, this);
+						  return new RenderResult(undefined, new OverflowContentError("Unable to layout item", [node]));
+						}
 					}
 				}
 			}
@@ -339,6 +405,46 @@ class Layout {
 				this.append(td, dest, null, true);
 			}
 		}
+	}
+
+	trimRenderedAfterSourceNode(sourceNode, rendered) {
+		if (!sourceNode) {
+			return;
+		}
+
+		let renderedNode;
+		if (isText(sourceNode)) {
+			let renderedParent = findElement(sourceNode.parentNode, rendered, true);
+			if (!renderedParent) {
+				return;
+			}
+
+			let index = indexOfTextNode(sourceNode, sourceNode.parentNode);
+			if (index === -1) {
+				return;
+			}
+
+			renderedNode = child(renderedParent, index) || renderedParent;
+		} else {
+			renderedNode = findElement(sourceNode, rendered, true);
+		}
+
+		if (!renderedNode) {
+			return;
+		}
+
+		let trimStart = renderedNode;
+		let tableRow = isElement(renderedNode)
+			? parentOf(renderedNode, "TR", rendered)
+			: parentOf(renderedNode.parentNode, "TR", rendered);
+		if (tableRow) {
+			trimStart = tableRow;
+		}
+
+		let range = document.createRange();
+		range.setStartBefore(trimStart);
+		range.setEndAfter(rendered.lastChild);
+		return range.extractContents();
 	}
 
 	async waitForImages(imgs) {

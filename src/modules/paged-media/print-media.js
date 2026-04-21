@@ -9,6 +9,9 @@ class PrintMedia extends Handler {
 	onAtMedia(node, item, list) {
 		let media = this.getMediaName(node);
 		let rules;
+		if (!Array.isArray(media) || media.length === 0) {
+			return;
+		}
 		if (media.includes("print")) {
 			rules = node.block.children;
 
