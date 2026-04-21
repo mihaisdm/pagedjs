@@ -136,7 +136,7 @@ class Layout {
 					await this.waitForImages(imgs);
 				}
 
-				newBreakToken = this.findBreakToken(wrapper, source, bounds, prevBreakToken);
+				newBreakToken = this.findBreakToken(wrapper, source, bounds, prevBreakToken, true, node);
 
 				if (newBreakToken && newBreakToken.equals(prevBreakToken)) {
 					logUnableToLayout({
@@ -166,7 +166,7 @@ class Layout {
 					await this.waitForImages(imgs);
 				}
 
-				newBreakToken = this.findBreakToken(wrapper, source, bounds, prevBreakToken);
+				newBreakToken = this.findBreakToken(wrapper, source, bounds, prevBreakToken, true, node);
 
 				if (!newBreakToken) {
 					newBreakToken = this.breakAt(node);
@@ -249,7 +249,7 @@ class Layout {
 					await this.waitForImages(imgs);
 				}
 
-				newBreakToken = this.findBreakToken(wrapper, source, bounds, prevBreakToken);
+				newBreakToken = this.findBreakToken(wrapper, source, bounds, prevBreakToken, true, node);
 
 				if (newBreakToken) {
 					length = 0;
@@ -257,37 +257,16 @@ class Layout {
 				}
 
 				if (newBreakToken && newBreakToken.equals(prevBreakToken)) {
-					// The repeated token means createBreakToken() mapped the current overflow
-					// back to the previous page's source position. Our fallback below can still
-					// advance the source token, but without extracting the current overflow the
-					// rendered page keeps its hidden extra columns and split-original tables end
-					// up shifted far to the right. Re-run extraction without the loop guard so
-					// the current page is trimmed before we switch to the fallback token.
-					let fallbackBreakToken = node && this.breakAt(node);
-
-					if (fallbackBreakToken && !fallbackBreakToken.equals(prevBreakToken)) {
-						let removed = this.trimRenderedAfterSourceNode(fallbackBreakToken.node, wrapper);
-						if (removed) {
-							this.hooks && this.hooks.afterOverflowRemoved.trigger(removed, wrapper, this);
-						}
-						newBreakToken = fallbackBreakToken;
-					} else {
-						logUnableToLayout({
-							reason: "max-chars-no-progress",
-							node: describeNodeForDebug(node),
-							prevBreakToken: describeBreakTokenForDebug(prevBreakToken),
-							newBreakToken: describeBreakTokenForDebug(newBreakToken),
-							fallbackBreakToken: describeBreakTokenForDebug(fallbackBreakToken),
-							length,
-							maxChars: this.maxChars,
-						});
-						if (fallbackBreakToken) {
-							newBreakToken = fallbackBreakToken;
-						} else {
-						  this.hooks && this.hooks.beforeRenderResult.trigger(undefined, wrapper, this);
-						  return new RenderResult(undefined, new OverflowContentError("Unable to layout item", [node]));
-						}
-					}
+					logUnableToLayout({
+						reason: "max-chars-no-progress",
+						node: describeNodeForDebug(node),
+						prevBreakToken: describeBreakTokenForDebug(prevBreakToken),
+						newBreakToken: describeBreakTokenForDebug(newBreakToken),
+						length,
+						maxChars: this.maxChars,
+					});
+					this.hooks && this.hooks.beforeRenderResult.trigger(undefined, wrapper, this);
+					return new RenderResult(undefined, new OverflowContentError("Unable to layout item", [node]));
 				}
 			}
 
@@ -310,6 +289,27 @@ class Layout {
 		});
 
 		return newBreakToken;
+	}
+
+	findFallbackBreakToken(prevBreakToken, source, fallbackNode) {
+		if (fallbackNode) {
+			return this.breakAt(fallbackNode);
+		}
+
+		if (prevBreakToken && prevBreakToken.node) {
+			if (isText(prevBreakToken.node)) {
+				let nextOffset = prevBreakToken.offset + 1;
+				if (nextOffset < prevBreakToken.node.textContent.length) {
+					return this.breakAt(prevBreakToken.node, nextOffset);
+				}
+			}
+
+			let after = nodeAfter(prevBreakToken.node, source);
+			if (after) {
+				return this.breakAt(after);
+			}
+		}
+
 	}
 
 	shouldBreak(node, limiter) {
@@ -407,11 +407,12 @@ class Layout {
 		}
 	}
 
-	trimRenderedAfterSourceNode(sourceNode, rendered) {
-		if (!sourceNode) {
+	removeRenderedContentAfterBreakToken(breakToken, rendered) {
+		if (!breakToken || !breakToken.node) {
 			return;
 		}
 
+		let sourceNode = breakToken.node;
 		let renderedNode;
 		if (isText(sourceNode)) {
 			let renderedParent = findElement(sourceNode.parentNode, rendered, true);
@@ -445,6 +446,37 @@ class Layout {
 		range.setStartBefore(trimStart);
 		range.setEndAfter(rendered.lastChild);
 		return range.extractContents();
+	}
+
+	normalizeTableFragmentPosition(sourceNode, rendered) {
+		if (!sourceNode) {
+			return;
+		}
+
+		let sourceTable;
+		if (isText(sourceNode)) {
+			sourceTable = sourceNode.parentElement && sourceNode.parentElement.closest("table");
+		} else {
+			sourceTable = sourceNode.nodeName === "TABLE" ? sourceNode : sourceNode.closest("table");
+		}
+
+		if (!sourceTable) {
+			return;
+		}
+
+		let renderedTable = findElement(sourceTable, rendered, true);
+		let pageElement = rendered.closest(".pagedjs_page");
+		if (!renderedTable || !pageElement) {
+			return;
+		}
+
+		let pageBounds = pageElement.getBoundingClientRect();
+		let tableBounds = renderedTable.getBoundingClientRect();
+		let leftWithinPage = tableBounds.left - pageBounds.left;
+
+		if (leftWithinPage > pageBounds.width && renderedTable.offsetLeft > 0) {
+			renderedTable.style.marginLeft = (-renderedTable.offsetLeft) + "px";
+		}
 	}
 
 	async waitForImages(imgs) {
@@ -583,9 +615,9 @@ class Layout {
 
 	}
 
-	findBreakToken(rendered, source, bounds = this.bounds, prevBreakToken, extract = true) {
+	findBreakToken(rendered, source, bounds = this.bounds, prevBreakToken, extract = true, fallbackNode) {
 		let overflow = this.findOverflow(rendered, bounds);
-		let breakToken, breakLetter;
+		let breakToken, breakLetter, fallbackBreakToken;
 
 		let overflowHooks = this.hooks.onOverflow.triggerSync(overflow, rendered, bounds, this);
 		overflowHooks.forEach((newOverflow) => {
@@ -604,15 +636,28 @@ class Layout {
 				}
 			});
 
-			// Stop removal if we are in a loop
-			if (breakToken && breakToken.equals(prevBreakToken)) {
-				return breakToken;
-			}
-
 			if (breakToken && breakToken["node"] && breakToken["offset"] && breakToken["node"].textContent) {
 				breakLetter = breakToken["node"].textContent.charAt(breakToken["offset"]);
 			} else {
 				breakLetter = undefined;
+			}
+
+			if (breakToken && breakToken.equals(prevBreakToken)) {
+				fallbackBreakToken = this.findFallbackBreakToken(prevBreakToken, source, fallbackNode);
+				if (fallbackBreakToken && fallbackBreakToken.equals(prevBreakToken)) {
+					fallbackBreakToken = undefined;
+				}
+			}
+
+			if (fallbackBreakToken) {
+				if (extract) {
+					let removed = this.removeRenderedContentAfterBreakToken(fallbackBreakToken, rendered);
+					if (removed) {
+						this.hooks && this.hooks.afterOverflowRemoved.trigger(removed, rendered, this);
+					}
+					this.normalizeTableFragmentPosition(fallbackBreakToken.node, rendered);
+				}
+				return fallbackBreakToken;
 			}
 
 			if (breakToken && breakToken.node && extract) {
@@ -620,6 +665,9 @@ class Layout {
 				this.hooks && this.hooks.afterOverflowRemoved.trigger(removed, rendered, this);
 			}
 
+			if (breakToken && breakToken.equals(prevBreakToken)) {
+				return breakToken;
+			}
 		}
 		return breakToken;
 	}

@@ -27,7 +27,10 @@ class Splits extends Handler {
 
 				if (!from.dataset.splitFrom) {
 					from.dataset.splitOriginal = true;
-					this.normalizeTableSplitPosition(from, prevPage);
+					let table = from.nodeName === "TABLE" ? from : from.closest("table");
+					if (table) {
+						table.dataset.splitOriginal = true;
+					}
 				}
 			}
 		});
@@ -35,21 +38,6 @@ class Splits extends Handler {
 		// Fix alignment on the deepest split element
 		if (from) {
 			this.handleAlignment(from);
-		}
-	}
-
-	normalizeTableSplitPosition(node, pageElement) {
-		let table = node.nodeName === "TABLE" ? node : node.closest("table");
-		if (!table) {
-			return;
-		}
-
-		let pageBounds = pageElement.getBoundingClientRect();
-		let tableBounds = table.getBoundingClientRect();
-		let leftWithinPage = tableBounds.left - pageBounds.left;
-
-		if (leftWithinPage > pageBounds.width && table.offsetLeft > 0) {
-			table.style.marginLeft = (-table.offsetLeft) + "px";
 		}
 	}
 
