@@ -134,8 +134,30 @@ class Page {
 
 		this.layoutMethod = new Layout(this.area, this.hooks, settings);
 
-		let renderResult = await this.layoutMethod.renderTo(this.wrapper, contents, breakToken);
-		let newBreakToken = renderResult.breakToken;
+		let nextStartToken = breakToken;
+		let renderResult;
+		let newBreakToken;
+		let attempts = 0;
+
+		do {
+			if (attempts > 0) {
+				this.clear();
+			}
+
+			renderResult = await this.layoutMethod.renderTo(this.wrapper, contents, nextStartToken);
+			newBreakToken = renderResult.breakToken;
+			attempts += 1;
+
+			if (!this.hasMeaningfulContent() &&
+				newBreakToken &&
+				nextStartToken &&
+				!newBreakToken.equals(nextStartToken)) {
+				nextStartToken = newBreakToken;
+				continue;
+			}
+
+			break;
+		} while (attempts < 5);
 
 		this.addListeners(contents);
 
@@ -156,6 +178,19 @@ class Page {
 		this.endToken = newBreakToken;
 
 		return newBreakToken;
+	}
+
+	hasMeaningfulContent() {
+
+		if (!this.wrapper) {
+			return false;
+		}
+
+		if (this.wrapper.textContent && this.wrapper.textContent.trim().length) {
+			return true;
+		}
+
+		return !!this.wrapper.querySelector("img, svg, canvas, table, video, iframe");
 	}
 
 	getByParent(ref, entries) {

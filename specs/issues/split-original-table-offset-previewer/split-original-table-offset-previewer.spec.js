@@ -20,6 +20,14 @@ describe("split-original table offset previewer export", () => {
 			const splitOriginalTables = Array.from(document.querySelectorAll('table[data-split-original="true"]'));
 			const targetImage = Array.from(document.querySelectorAll(".pagedjs_page img"))
 				.find((img) => img.alt.includes("TreePopUp"));
+			const emptySplitPages = pagedPages
+				.map((page, pageIndex) => ({
+					pageIndex,
+					textLength: (page.innerText || "").trim().length,
+					splitFromCount: page.querySelectorAll("[data-split-from]").length,
+					mediaCount: page.querySelectorAll("img, svg, canvas, table").length
+				}))
+				.filter((entry) => entry.splitFromCount > 0 && entry.textLength === 0 && entry.mediaCount === 0);
 			const matchingTables = splitOriginalTables.filter((table) => {
 				const text = table.innerText;
 				return text.includes("DataViewID") || text.includes("ProfileName");
@@ -64,6 +72,7 @@ describe("split-original table offset previewer export", () => {
 
 			return {
 				layoutWarnings: window.__LAYOUT_WARNINGS__ || [],
+				emptySplitPages,
 				misplacedImageFragment,
 				splitOriginalCount: splitOriginalTables.length,
 				targetTableCount: matchingTables.length,
@@ -72,6 +81,7 @@ describe("split-original table offset previewer export", () => {
 		});
 
 		expect(result.layoutWarnings).toEqual([]);
+		expect(result.emptySplitPages).toEqual([]);
 		if (result.misplacedImageFragment) {
 			expect(result.misplacedImageFragment.leftWithinPage).toBeLessThanOrEqual(200);
 		}
