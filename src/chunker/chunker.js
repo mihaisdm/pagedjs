@@ -388,8 +388,7 @@ class Chunker {
 			this.charsPerBreak.shift();
 		}
 
-		const averageCharLength = this.charsPerBreak.reduce((a, b) => a + b, 0) / (this.charsPerBreak.length);
-		this.maxChars = Math.max(1500, averageCharLength);
+		this.maxChars = this.charsPerBreak.reduce((a, b) => a + b, 0) / (this.charsPerBreak.length);
 	}
 
 	removePages(fromIndex=0) {

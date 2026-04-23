@@ -3836,6 +3836,15 @@ f access to a data source is restricted, any multiple KPIs chart using this sour
   </div>
   <div class="export-preview"></div>
   <script>
+    window.__LAYOUT_WARNINGS__ = [];
+    const originalWarn = console.warn.bind(console);
+    console.warn = (...args) => {
+      if (typeof args[0] === "string" && args[0].includes("Unable to layout item")) {
+        window.__LAYOUT_WARNINGS__.push(args[0]);
+      }
+      originalWarn(...args);
+    };
+
     window.__PRINT_READY__ = false;
     window.addEventListener("load", async () => {
       const sourceRoot = document.querySelector(".export-source");

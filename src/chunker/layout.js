@@ -175,16 +175,16 @@ class Layout {
 				}
 
 				if (newBreakToken && newBreakToken.equals(prevBreakToken)) {
-					logUnableToLayout({
-						reason: "forced-break-no-progress",
-						node: describeNodeForDebug(node),
-						prevBreakToken: describeBreakTokenForDebug(prevBreakToken),
-						newBreakToken: describeBreakTokenForDebug(newBreakToken),
-					});
 					let after = newBreakToken.node && nodeAfter(newBreakToken.node);
 					if (after) {
 						newBreakToken = new BreakToken(after);
 					} else {
+						logUnableToLayout({
+							reason: "forced-break-no-progress",
+							node: describeNodeForDebug(node),
+							prevBreakToken: describeBreakTokenForDebug(prevBreakToken),
+							newBreakToken: describeBreakTokenForDebug(newBreakToken),
+						});
 						return new RenderResult(undefined, new OverflowContentError("Unable to layout item", [node]));
 					}
 				}
@@ -257,16 +257,21 @@ class Layout {
 				}
 
 				if (newBreakToken && newBreakToken.equals(prevBreakToken)) {
-					logUnableToLayout({
-						reason: "max-chars-no-progress",
-						node: describeNodeForDebug(node),
-						prevBreakToken: describeBreakTokenForDebug(prevBreakToken),
-						newBreakToken: describeBreakTokenForDebug(newBreakToken),
-						length,
-						maxChars: this.maxChars,
-					});
-					this.hooks && this.hooks.beforeRenderResult.trigger(undefined, wrapper, this);
-					return new RenderResult(undefined, new OverflowContentError("Unable to layout item", [node]));
+					let after = newBreakToken.node && nodeAfter(newBreakToken.node);
+					if (after) {
+						newBreakToken = new BreakToken(after);
+					} else {
+						logUnableToLayout({
+							reason: "max-chars-no-progress",
+							node: describeNodeForDebug(node),
+							prevBreakToken: describeBreakTokenForDebug(prevBreakToken),
+							newBreakToken: describeBreakTokenForDebug(newBreakToken),
+							length,
+							maxChars: this.maxChars,
+						});
+						this.hooks && this.hooks.beforeRenderResult.trigger(undefined, wrapper, this);
+						return new RenderResult(undefined, new OverflowContentError("Unable to layout item", [node]));
+					}
 				}
 			}
 
@@ -309,7 +314,18 @@ class Layout {
 				return this.breakAt(after);
 			}
 		}
+	}
 
+	findAncestorTable(node) {
+		if (!node) {
+			return;
+		}
+
+		if (isText(node)) {
+			return node.parentElement && node.parentElement.closest("table");
+		}
+
+		return node.nodeName === "TABLE" ? node : node.closest("table");
 	}
 
 	shouldBreak(node, limiter) {
@@ -448,35 +464,90 @@ class Layout {
 		return range.extractContents();
 	}
 
-	normalizeTableFragmentPosition(sourceNode, rendered) {
-		if (!sourceNode) {
-			return;
-		}
-
-		let sourceTable;
-		if (isText(sourceNode)) {
-			sourceTable = sourceNode.parentElement && sourceNode.parentElement.closest("table");
-		} else {
-			sourceTable = sourceNode.nodeName === "TABLE" ? sourceNode : sourceNode.closest("table");
-		}
-
-		if (!sourceTable) {
-			return;
-		}
-
-		let renderedTable = findElement(sourceTable, rendered, true);
+	getRenderedPageContentBounds(rendered) {
 		let pageElement = rendered.closest(".pagedjs_page");
-		if (!renderedTable || !pageElement) {
+		let contentElement = pageElement && pageElement.querySelector(".pagedjs_page_content");
+		let boundsElement = contentElement || pageElement;
+
+		if (!pageElement || !boundsElement) {
 			return;
 		}
 
-		let pageBounds = pageElement.getBoundingClientRect();
-		let tableBounds = renderedTable.getBoundingClientRect();
-		let leftWithinPage = tableBounds.left - pageBounds.left;
+		return {
+			pageElement,
+			boundsElement,
+			bounds: boundsElement.getBoundingClientRect()
+		};
+	}
 
-		if (leftWithinPage > pageBounds.width && renderedTable.offsetLeft > 0) {
-			renderedTable.style.marginLeft = (-renderedTable.offsetLeft) + "px";
+	findOffPageSplitCandidate(rendered) {
+		let pageInfo = this.getRenderedPageContentBounds(rendered);
+		if (!pageInfo) {
+			return;
 		}
+
+		let {bounds} = pageInfo;
+		let splitElements = Array.from(rendered.querySelectorAll("[data-split-from]"));
+		let candidates = [];
+
+		splitElements.forEach((element) => {
+			if (["TABLE", "IMG", "SVG", "CANVAS"].includes(element.nodeName)) {
+				candidates.push(element);
+			}
+
+			candidates.push(...element.querySelectorAll("table, img, svg, canvas"));
+		});
+
+		return candidates.find((candidate) => {
+			let rect = candidate.getBoundingClientRect();
+			return rect.width > 0 && rect.left >= bounds.right;
+		});
+	}
+
+	normalizeOffPageSplitContent(rendered) {
+		let pageInfo = this.getRenderedPageContentBounds(rendered);
+		if (!pageInfo) {
+			return false;
+		}
+
+		let {bounds} = pageInfo;
+		let adjusted = false;
+		let candidate = this.findOffPageSplitCandidate(rendered);
+		let seen = new Set();
+
+		while (candidate && !seen.has(candidate)) {
+			seen.add(candidate);
+			let rect = candidate.getBoundingClientRect();
+			let currentMarginLeft = parseFloat(window.getComputedStyle(candidate).marginLeft) || 0;
+			let shift = rect.left - bounds.left;
+
+			candidate.style.marginLeft = (currentMarginLeft - shift) + "px";
+			candidate.style.marginRight = "0px";
+			adjusted = true;
+
+			candidate = this.findOffPageSplitCandidate(rendered);
+		}
+
+		return adjusted;
+	}
+
+	describeRenderedSplitCandidate(candidate, rendered) {
+		let pageInfo = this.getRenderedPageContentBounds(rendered);
+		if (!pageInfo || !candidate) {
+			return;
+		}
+
+		let {bounds} = pageInfo;
+		let rect = candidate.getBoundingClientRect();
+
+		return {
+			tag: candidate.nodeName,
+			ref: candidate.dataset && candidate.dataset.ref,
+			leftWithinPage: Math.round(rect.left - bounds.left),
+			rightWithinPage: Math.round(rect.right - bounds.left),
+			pageWidth: Math.round(bounds.width),
+			offsetLeft: candidate.offsetLeft
+		};
 	}
 
 	async waitForImages(imgs) {
@@ -636,7 +707,10 @@ class Layout {
 				}
 			});
 
-			if (breakToken && breakToken["node"] && breakToken["offset"] && breakToken["node"].textContent) {
+			if (breakToken &&
+				breakToken["node"] &&
+				typeof breakToken["offset"] !== "undefined" &&
+				breakToken["node"].textContent) {
 				breakLetter = breakToken["node"].textContent.charAt(breakToken["offset"]);
 			} else {
 				breakLetter = undefined;
@@ -655,7 +729,15 @@ class Layout {
 					if (removed) {
 						this.hooks && this.hooks.afterOverflowRemoved.trigger(removed, rendered, this);
 					}
-					this.normalizeTableFragmentPosition(fallbackBreakToken.node, rendered);
+					this.normalizeOffPageSplitContent(rendered);
+					let offPageCandidate = this.findOffPageSplitCandidate(rendered);
+					if (offPageCandidate) {
+						logUnableToLayout({
+							reason: "fallback-hidden-content",
+							node: describeNodeForDebug(fallbackBreakToken.node),
+							candidate: this.describeRenderedSplitCandidate(offPageCandidate, rendered),
+						});
+					}
 				}
 				return fallbackBreakToken;
 			}
