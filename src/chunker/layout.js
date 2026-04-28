@@ -955,12 +955,21 @@ class Layout {
 		}
 
 		let original = findElement(lastChild, source);
+		if (!original) {
+			return;
+		}
 
 		if (lastNodeIndex) {
 			original = original.childNodes[lastNodeIndex];
 		}
+		if (!original) {
+			return;
+		}
 
 		let after = nodeAfter(original);
+		if (!after) {
+			return;
+		}
 
 		return this.breakAt(after);
 	}

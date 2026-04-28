@@ -39,6 +39,9 @@ export function* walk(start, limiter) {
 }
 
 export function nodeAfter(node, limiter) {
+	if (!node) {
+		return;
+	}
 	if (limiter && node === limiter) {
 		return;
 	}
@@ -480,7 +483,13 @@ export function cloneNode(n, deep=false) {
 }
 
 export function findElement(node, doc, forceQuery) {
+	if (!node || typeof node.getAttribute !== "function") {
+		return;
+	}
 	const ref = node.getAttribute("data-ref");
+	if (!ref) {
+		return;
+	}
 	return findRef(ref, doc, forceQuery);
 }
 
@@ -724,6 +733,9 @@ export function parentOf(node, nodeName, limiter) {
  *  2) null if no such node exists.
  */
 export function nextSignificantNode(sib) {
+	if (!sib) {
+		return null;
+	}
 	while ((sib = sib.nextSibling)) {
 		if (!isIgnorable(sib)) return sib;
 	}
