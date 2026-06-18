@@ -621,12 +621,26 @@ class Layout {
 						// We need to ensure that the previous sibling of temp is fully rendered.
 						const renderedNodeFromSource = findElement(renderedNode, source);
 						const walker = document.createTreeWalker(renderedNodeFromSource, NodeFilter.SHOW_ELEMENT);
-						const lastChildOfRenderedNodeFromSource = walker.lastChild();
-						const lastChildOfRenderedNodeMatchingFromRendered = findElement(lastChildOfRenderedNodeFromSource, rendered);
-						// Check if we found that the last child in source
-						if (!lastChildOfRenderedNodeMatchingFromRendered) {
-							// Pending content to be rendered before virtual break token
-							return;
+						// Descend to the DEEPEST last descendant, not just the immediate
+						// last child. A large container (e.g. a whole chapter <section>)
+						// can have its immediate last child rendered while deeper content
+						// inside it is still pending; checking only the immediate child
+						// would wrongly treat the container as complete and emit a break
+						// token pointing past the unrendered tail — silently dropping the
+						// container's remaining content (e.g. whole subsections).
+						// Also guards the leaf case: if renderedNode has no element
+						// children, walker.lastChild() returns null and we skip the check
+						// (findElement(null, …) would otherwise look like pending content).
+						let deepLastDescendant = null, lastWalkStep;
+						while ((lastWalkStep = walker.lastChild())) { deepLastDescendant = lastWalkStep; }
+						if (deepLastDescendant) {
+							const deepLastDescendantInRendered = findElement(deepLastDescendant, rendered);
+							// If the deepest last descendant of the source node is not yet
+							// in the rendered output, there is still pending content.
+							if (!deepLastDescendantInRendered) {
+								// Pending content to be rendered before virtual break token
+								return;
+							}
 						}
 						// Otherwise we will return a break token as per below
 					}

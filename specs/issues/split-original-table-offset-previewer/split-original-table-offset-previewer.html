@@ -3938,6 +3938,7 @@ f access to a data source is restricted, any multiple KPIs chart using this sour
         const stablePages = await waitForStablePages();
         syncPrintOutputClass();
         setStatus("pages", stablePages + " page(s) stabilized");
+        sourceRoot.remove();
         document.body.dataset.printReady = "true";
         window.__PRINT_READY__ = true;
       } catch (error) {
