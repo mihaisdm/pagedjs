@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta http-equiv="Content-Type" content="text/html;charset=utf-8"/>
+	<title>Split table column widths</title>
+	<script src="../../../dist/paged.polyfill.js"></script>
+	<style>
+		@page {
+			size: 120mm 120mm;
+			margin: 10mm;
+		}
+		body { font-family: sans-serif; font-size: 10px; }
+		table {
+			width: 100%;
+			border-collapse: collapse;
+		}
+		th, td {
+			border: 1px solid #333;
+			padding: 2px 4px;
+			vertical-align: top;
+			text-align: left;
+		}
+		/* a non-wrapping token forces a column to a fixed minimum width */
+		.wide { white-space: nowrap; }
+	</style>
+</head>
+<body>
+<section>
+	<h3>Catalogue</h3>
+	<table>
+		<thead>
+		<tr>
+			<th>ID</th>
+			<th>Name</th>
+			<th>Notes</th>
+		</tr>
+		</thead>
+		<tbody id="rows">
+		<!-- rows injected below -->
+		</tbody>
+	</table>
+</section>
+<script>
+	// Build a table whose column-width demand differs sharply between the
+	// early rows (rendered on page 1) and the later rows (rendered on the
+	// continuation pages). Row 1 carries a long, non-wrapping token in the
+	// "Name" column so column 2 is wide on page 1; later rows keep "Name"
+	// short, so with naive auto table-layout column 2 would be narrow on the
+	// continuation fragments -> columns misalign across pages.
+	const tbody = document.getElementById("rows");
+	const longToken = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"; // 30 chars, no spaces
+	for (let i = 1; i <= 60; i++) {
+		const tr = document.createElement("tr");
+		const id = document.createElement("td");
+		id.textContent = String(i);
+		const name = document.createElement("td");
+		if (i === 1) {
+			name.className = "wide";
+			name.textContent = longToken;
+		} else {
+			name.textContent = "n" + i;
+		}
+		const notes = document.createElement("td");
+		notes.textContent = "row " + i;
+		tr.appendChild(id);
+		tr.appendChild(name);
+		tr.appendChild(notes);
+		tbody.appendChild(tr);
+	}
+</script>
+</body>
+</html>

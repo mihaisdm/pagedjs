@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta http-equiv="Content-Type" content="text/html;charset=utf-8"/>
+	<title>Split table column widths (wide container)</title>
+	<script src="../../../dist/paged.polyfill.js"></script>
+	<style>
+		@page {
+			/* Container much wider than the table's natural content, so auto
+			   table-layout stretches the columns past their content width on
+			   page 1. Short height forces a vertical split. */
+			size: 250mm 90mm;
+			margin: 10mm;
+		}
+		body { font-family: sans-serif; font-size: 10px; }
+		table {
+			width: 100%;
+			border-collapse: collapse;
+		}
+		th, td {
+			border: 1px solid #333;
+			padding: 2px 4px;
+			vertical-align: top;
+			text-align: left;
+		}
+	</style>
+</head>
+<body>
+<section>
+	<h3>Catalogue (wide)</h3>
+	<table>
+		<thead>
+		<tr>
+			<th>ID</th>
+			<th>Name</th>
+			<th>Notes</th>
+		</tr>
+		</thead>
+		<tbody id="rows"></tbody>
+	</table>
+</section>
+<script>
+	// All cells short -> natural content width is far smaller than the page,
+	// so width:100% stretches the columns. The split fragments must reproduce
+	// the *stretched* page-1 widths, not the (smaller) content widths.
+	const tbody = document.getElementById("rows");
+	for (let i = 1; i <= 80; i++) {
+		const tr = document.createElement("tr");
+		const id = document.createElement("td");
+		id.textContent = String(i);
+		const name = document.createElement("td");
+		name.textContent = "name " + i;
+		const notes = document.createElement("td");
+		notes.textContent = "note " + i;
+		tr.appendChild(id);
+		tr.appendChild(name);
+		tr.appendChild(notes);
+		tbody.appendChild(tr);
+	}
+</script>
+</body>
+</html>

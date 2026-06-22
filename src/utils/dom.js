@@ -136,6 +136,73 @@ export function stackChildren(currentNode, stacked) {
 	return stack;
 }
 
+// Property names used to stash the canonical column geometry of a split table
+// on its source node (set by the Splits handler after the first fragment is
+// laid out, read back here when building continuation fragments).
+export const SPLIT_TABLE_COL_WIDTHS = "__pagedColWidths";
+
+function firstChildByName(parentNode, name) {
+	for (let child = parentNode.firstElementChild; child; child = child.nextElementSibling) {
+		if (child.nodeName === name) {
+			return child;
+		}
+	}
+	return null;
+}
+
+// Remove identity attributes from a cloned subtree so the duplicate does not
+// collide with the data-ref / id based lookups used elsewhere (e.g. the Splits
+// handler matches fragments across pages by data-ref).
+function stripIdentity(node) {
+	let elements = [node];
+	if (node.querySelectorAll) {
+		elements = elements.concat(Array.from(node.querySelectorAll("*")));
+	}
+	elements.forEach((el) => {
+		if (el.removeAttribute) {
+			el.removeAttribute("data-ref");
+			el.removeAttribute("id");
+			el.removeAttribute("data-id");
+		}
+	});
+}
+
+// Re-apply captured column widths and replicate the header onto a continuation
+// fragment of a split table. `sourceTable` is the original table node (which
+// carries the captured geometry), `clonedTable` is the shallow clone that will
+// become the fragment on the new page.
+function rebuildSplitTable(sourceTable, clonedTable) {
+	// Replicate the header so it repeats on every continuation page. The header
+	// always lives in the source DOM, independent of the captured widths.
+	let sourceThead = firstChildByName(sourceTable, "THEAD");
+	if (sourceThead) {
+		let theadClone = sourceThead.cloneNode(true);
+		stripIdentity(theadClone);
+		theadClone.dataset.splitTableHeader = "true";
+		clonedTable.appendChild(theadClone);
+	}
+
+	// Preserve column widths so columns line up across fragments. Use a fixed
+	// layout driven by an explicit <colgroup> matching the first fragment, and
+	// pin the table width to the sum of those columns so fixed layout cannot
+	// stretch them to fill a wider container.
+	let colWidths = sourceTable[SPLIT_TABLE_COL_WIDTHS];
+	if (colWidths && colWidths.length) {
+		clonedTable.style.tableLayout = "fixed";
+		let totalWidth = colWidths.reduce((sum, width) => sum + width, 0);
+		clonedTable.style.width = totalWidth + "px";
+		let colgroup = document.createElement("colgroup");
+		colgroup.dataset.splitTableColgroup = "true";
+		colWidths.forEach((width) => {
+			let col = document.createElement("col");
+			col.style.width = width + "px";
+			colgroup.appendChild(col);
+		});
+		// colgroup must precede thead/tbody in the table.
+		clonedTable.insertBefore(colgroup, clonedTable.firstChild);
+	}
+}
+
 export function rebuildAncestors(node) {
 	let parent, ancestor;
 	let ancestors = [];
@@ -188,7 +255,17 @@ export function rebuildAncestors(node) {
 	for (var i = 0; i < ancestors.length; i++) {
 		ancestor = ancestors[i];
 		parent = ancestor.cloneNode(false);
-	
+
+		// When a table is split across pages, the continuation fragment is a
+		// shallow clone of the source <table> with only the remaining rows.
+		// Left alone, the browser re-runs auto table-layout on each fragment,
+		// so column widths (and the missing header) differ from page to page.
+		// Re-apply the column widths captured from the first rendered fragment
+		// and replicate the header so every fragment stays aligned.
+		if (ancestor.nodeName === "TABLE") {
+			rebuildSplitTable(ancestor, parent);
+		}
+
 		parent.setAttribute("data-split-from", parent.getAttribute("data-ref"));
 		// ancestor.setAttribute("data-split-to", parent.getAttribute("data-ref"));
 

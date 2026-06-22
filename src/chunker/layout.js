@@ -30,6 +30,20 @@ import Hook from "../utils/hook.js";
 
 const MAX_CHARS_PER_BREAK = 1500;
 
+// Detects nodes injected when rebuilding a split table continuation: the
+// synthetic <colgroup> used to pin column widths and the replicated header.
+// Both are marked with dedicated data attributes and exist only for
+// presentation (their clones carry no data-ref), so the overflow/break
+// machinery must ignore them. Scoped to the markers we add so native
+// colgroups/headers in ordinary tables are unaffected.
+function isReplicatedTableDecoration(node) {
+	let element = node.nodeType === 1 ? node : node.parentElement;
+	if (!element || typeof element.closest !== "function") {
+		return false;
+	}
+	return element.closest("[data-split-table-colgroup], [data-split-table-header]") !== null;
+}
+
 function describeNodeForDebug(node) {
 	if (typeof window !== "undefined" && typeof window.__PRINT_DESCRIBE_NODE__ === "function") {
 		return window.__PRINT_DESCRIBE_NODE__(node);
@@ -798,6 +812,14 @@ class Layout {
 			breakAvoid = false;
 			prev = undefined;
 			br = undefined;
+
+			// A replicated table header (and the synthetic colgroup that pins
+			// column widths on continuation fragments) is decoration injected
+			// during rebuild. It carries no data-ref and must never be chosen
+			// as an overflow / break point.
+			if (node && isReplicatedTableDecoration(node)) {
+				continue;
+			}
 
 			if (node) {
 				let pos = getBoundingClientRect(node);
