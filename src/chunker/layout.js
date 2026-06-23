@@ -30,6 +30,12 @@ import Hook from "../utils/hook.js";
 
 const MAX_CHARS_PER_BREAK = 1500;
 
+// When a table would be split such that its first fragment keeps this many
+// rendered rows or fewer (the header counts), and there is other content above
+// it on the page, push the whole table to the next page instead of leaving an
+// orphaned header (or a sliver of rows) stranded at the bottom of the page.
+const MAX_ORPHANED_TABLE_ROWS = 3;
+
 // Detects nodes injected when rebuilding a split table continuation: the
 // synthetic <colgroup> used to pin column widths and the replicated header.
 // Both are marked with dedicated data attributes and exist only for
@@ -612,6 +618,28 @@ class Layout {
 		return breakNode;
 	}
 
+	// Walk up from `node` to `container`, looking for any earlier sibling that
+	// carries rendered content. Used to tell whether a table sits at the very
+	// top of a (fresh) page or whether other content precedes it: a table at
+	// the top must never be pushed further (it would make no progress), while
+	// one preceded by content can be moved down to avoid an orphaned header.
+	// Content-based rather than position-based so page margins/padding do not
+	// make it fire spuriously at the top of the page.
+	hasRenderedContentBefore(node, container) {
+		let current = node;
+		while (current && current !== container) {
+			let sibling = current.previousElementSibling;
+			while (sibling) {
+				if (sibling.textContent && sibling.textContent.trim().length) {
+					return true;
+				}
+				sibling = sibling.previousElementSibling;
+			}
+			current = current.parentElement;
+		}
+		return false;
+	}
+
 	createBreakToken(overflow, rendered, source) {
 		let container = overflow.startContainer;
 		let offset = overflow.startOffset;
@@ -885,6 +913,45 @@ class Layout {
 								if (previousRowColumnCount === columnCount) {
 									prev = previousRow;
 								}
+							}
+						}
+					}
+
+					// Orphan control: the overflow can land on a row, on the
+					// tbody, or on the table itself. In every case, if this is
+					// the first fragment of the table (not a continuation) and
+					// only a few rows (the header included) would remain on a
+					// page that already carries other content, push the whole
+					// table to the next page rather than leaving an orphaned
+					// header / row sliver behind (which would also force the
+					// header to repeat on the following continuation page).
+					//
+					// The kept-row count is derived from document order rather
+					// than geometry: while a table is being laid out past the
+					// page bottom its overflowing rows are not yet reliably
+					// positioned, so we count the <tr>s that precede the overflow
+					// node (the first content bound for the next page) instead.
+					if (!prev) {
+						// Only treat this as a table-start orphan when the overflow
+						// lands on a structural boundary (the table, a section group
+						// or a whole row that is bound for the next page). When it
+						// lands inside a cell, an earlier row has already started on
+						// this page and its tall content is merely splitting — that
+						// is not a table starting near the page bottom, so the table
+						// must keep splitting in place rather than being moved.
+						let overflowTable = (isElement(node) &&
+							!node.closest("td, th") &&
+							["TABLE", "THEAD", "TBODY", "TFOOT", "TR"].includes(node.nodeName))
+							? (node.nodeName === "TABLE" ? node : node.closest("table"))
+							: null;
+						if (overflowTable && !overflowTable.hasAttribute("data-split-from")) {
+							let keptRows = Array.from(overflowTable.querySelectorAll("tr"))
+								.filter((row) => row !== node &&
+									(node.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_PRECEDING))
+								.length;
+							if (keptRows <= MAX_ORPHANED_TABLE_ROWS &&
+								this.hasRenderedContentBefore(overflowTable, rendered)) {
+								prev = overflowTable;
 							}
 						}
 					}
