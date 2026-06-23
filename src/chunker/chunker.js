@@ -6,6 +6,8 @@ import Queue from "../utils/queue.js";
 import {
 	requestIdleCallback
 } from "../utils/utils.js";
+import { nodeAfter } from "../utils/dom.js";
+import BreakToken from "./breaktoken.js";
 import { OverflowContentError } from "./renderresult.js";
 
 const MAX_PAGES = false;
@@ -353,13 +355,41 @@ class Chunker {
 			if (breakToken) {
 				let newToken = breakToken.toJSON(true);
 				if (tokens.lastIndexOf(newToken) > -1) {
-					// loop
-					let err = new OverflowContentError("Layout repeated", [breakToken.node]);
-					console.error("Layout repeated at: ", breakToken.node);
-					return err;
-				} else {
-					tokens.push(newToken);
+					// The same break point was already used on an earlier page: the
+					// layout is cycling (e.g. a split table whose pinned column widths
+					// keep re-overflowing the same row, so it can never be placed). The
+					// cycle can have a period > 1 (the layout ping-pongs between two
+					// break points), so stepping a single node may land back inside it.
+					// Aborting here drops ALL remaining content; instead skip forward in
+					// document order past the offending region until we reach a break
+					// point that has not been used before, then resume from there. Only
+					// bail if the document is exhausted without finding fresh progress.
+					let candidate = breakToken;
+					let advanced;
+					let guard = 0;
+					while (guard++ < 10000) {
+						let after = candidate.node && nodeAfter(candidate.node);
+						if (!after) {
+							break;
+						}
+						candidate = new BreakToken(after);
+						let candidateToken = candidate.toJSON(true);
+						if (tokens.lastIndexOf(candidateToken) === -1) {
+							advanced = candidate;
+							newToken = candidateToken;
+							break;
+						}
+					}
+					if (advanced) {
+						breakToken = advanced;
+					} else {
+						// loop
+						let err = new OverflowContentError("Layout repeated", [breakToken.node]);
+						console.error("Layout repeated at: ", breakToken.node);
+						return err;
+					}
 				}
+				tokens.push(newToken);
 			}
 
 			await this.hooks.afterPageLayout.trigger(page.element, page, breakToken, this);

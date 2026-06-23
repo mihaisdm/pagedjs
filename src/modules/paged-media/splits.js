@@ -83,14 +83,30 @@ class Splits extends Handler {
 			return;
 		}
 
-		// Measure a row that maps one cell per column (no colspans), otherwise
-		// the per-column mapping is ambiguous and we leave the table untouched.
-		let referenceRow = renderedTable.querySelector("tbody > tr") || renderedTable.querySelector("tr");
+		// Measure a body row that maps one cell per column (no colspans),
+		// otherwise the per-column mapping is ambiguous and we leave the table
+		// untouched. Deliberately do NOT fall back to a header row: when a table
+		// starts at the very bottom of a page only its header may fit on the
+		// first fragment (no body rows), and the header's auto widths are not a
+		// reliable basis for pinning the body columns.
+		let referenceRow = renderedTable.querySelector("tbody > tr");
 		if (!referenceRow) {
+			// No body row on this fragment yet — let a later fragment that does
+			// carry body rows provide the canonical widths instead.
 			return;
 		}
 		let cells = Array.from(referenceRow.children);
 		if (!cells.length || cells.some((cell) => parseInt(cell.getAttribute("colspan") || "1", 10) > 1)) {
+			return;
+		}
+
+		// The reference row must account for every column. If it was measured
+		// while partially laid out (fewer cells than the table has columns),
+		// pinning would leave the missing columns at width 0 under
+		// table-layout:fixed — collapsing their header/cell content into a
+		// single character per line. Skip pinning rather than mangle the table.
+		let expectedColumns = this.tableColumnCount(sourceTable);
+		if (expectedColumns && cells.length !== expectedColumns) {
 			return;
 		}
 
@@ -105,6 +121,21 @@ class Splits extends Handler {
 	tableHasRowspan(table) {
 		return Array.from(table.querySelectorAll("[rowspan]"))
 			.some((cell) => parseInt(cell.getAttribute("rowspan") || "1", 10) > 1);
+	}
+
+	// Number of columns the table actually has, taken as the widest row
+	// (summing colspans). Used to reject a reference row that was measured
+	// while only partially laid out.
+	tableColumnCount(table) {
+		let max = 0;
+		for (let row of Array.from(table.rows || [])) {
+			let count = 0;
+			for (let cell of Array.from(row.cells || [])) {
+				count += cell.colSpan || 1;
+			}
+			max = Math.max(max, count);
+		}
+		return max;
 	}
 
 	handleAlignment(node) {

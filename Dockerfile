@@ -11,6 +11,10 @@ ENV CONNECTION_TIMEOUT=60000
 # Configuration for GS4JS
 RUN echo "GS4JS_HOME=/usr/lib/$(gcc -dumpmachine)"
 
+# The NodeSource focal repo in the base image was deprecated; remove it so
+# apt-get update doesn't fail.
+RUN rm -f /etc/apt/sources.list.d/nodesource.list
+
 # Install ghostscript
 RUN apt-get update && \
 		apt-get install -y build-essential make gcc g++ && \
@@ -43,7 +47,7 @@ RUN apt-get update && \
 		apt-get install -y vim && \
 		rm -rf /var/lib/apt/lists/*
 
-RUN npm install npm@latest -g
+#RUN npm install npm@latest -g
 RUN npm install -g node-gyp
 
 RUN mkdir -p $DIRECTORY

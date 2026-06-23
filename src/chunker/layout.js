@@ -640,6 +640,43 @@ class Layout {
 		return false;
 	}
 
+	// If `node` is the overflow point that marks a (non-continuation) table
+	// *starting* near the bottom of a page that already carries content, return
+	// that table so the whole thing can be pushed to the next page. Otherwise
+	// null. "Starting" means the overflow is a structural boundary
+	// (table/section-group/row not inside a cell) OR a cell in the header or the
+	// very first body row — the header fits but the first row does not, or the
+	// header itself overflows. A cell overflow in a later body row is genuine
+	// body splitting and is left alone. Handles both element and text overflow
+	// nodes, so it can be shared by the element- and text-level break paths.
+	orphanTableForNode(node, rendered) {
+		let el = isElement(node) ? node : node.parentElement;
+		let table = el && el.closest && el.closest("table");
+		if (!table || table.hasAttribute("data-split-from")) {
+			return null;
+		}
+		let cell = el.closest("td, th");
+		let atStart;
+		if (!cell) {
+			atStart = isElement(node) &&
+				["TABLE", "THEAD", "TBODY", "TFOOT", "TR"].includes(node.nodeName);
+		} else {
+			let firstBodyRow = table.querySelector("tbody > tr");
+			atStart = !!cell.closest("thead") || cell.closest("tr") === firstBodyRow;
+		}
+		if (!atStart) {
+			return null;
+		}
+		let keptRows = Array.from(table.querySelectorAll("tr"))
+			.filter((row) => row !== node &&
+				(node.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_PRECEDING))
+			.length;
+		if (keptRows <= MAX_ORPHANED_TABLE_ROWS && this.hasRenderedContentBefore(table, rendered)) {
+			return table;
+		}
+		return null;
+	}
+
 	createBreakToken(overflow, rendered, source) {
 		let container = overflow.startContainer;
 		let offset = overflow.startOffset;
@@ -939,20 +976,9 @@ class Layout {
 						// this page and its tall content is merely splitting — that
 						// is not a table starting near the page bottom, so the table
 						// must keep splitting in place rather than being moved.
-						let overflowTable = (isElement(node) &&
-							!node.closest("td, th") &&
-							["TABLE", "THEAD", "TBODY", "TFOOT", "TR"].includes(node.nodeName))
-							? (node.nodeName === "TABLE" ? node : node.closest("table"))
-							: null;
-						if (overflowTable && !overflowTable.hasAttribute("data-split-from")) {
-							let keptRows = Array.from(overflowTable.querySelectorAll("tr"))
-								.filter((row) => row !== node &&
-									(node.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_PRECEDING))
-								.length;
-							if (keptRows <= MAX_ORPHANED_TABLE_ROWS &&
-								this.hasRenderedContentBefore(overflowTable, rendered)) {
-								prev = overflowTable;
-							}
+						let orphanTable = this.orphanTableForNode(node, rendered);
+						if (orphanTable) {
+							prev = orphanTable;
 						}
 					}
 
@@ -995,6 +1021,18 @@ class Layout {
 					}
 
 					if (left >= end || top >= vEnd) {
+						// A table starting near the page bottom overflows at the text
+						// level (its header / first-row text exceeds the bound) before
+						// any element boundary does, so the element-level orphan check
+						// above is bypassed. Apply the same orphan control here: push
+						// the whole table to the next page instead of stranding its
+						// header.
+						let orphanTable = this.orphanTableForNode(node, rendered);
+						if (orphanTable) {
+							range = document.createRange();
+							range.selectNode(orphanTable);
+							break;
+						}
 						range = document.createRange();
 						offset = this.textBreak(node, start, end, vStart, vEnd);
 						if (!offset) {
