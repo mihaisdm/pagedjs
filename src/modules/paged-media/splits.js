@@ -115,7 +115,65 @@ class Splits extends Handler {
 			return;
 		}
 
+		// Do not pin a table that contains a row taller than the page content
+		// area. Such a row must split across the page boundary, but pinning the
+		// (often narrow) captured widths via table-layout:fixed + an explicit
+		// <colgroup> on the continuation fragment breaks that mid-row split: the
+		// oversized row's on-page fragment is laid out at full page height on top
+		// of the rows above it, so its short leading cells (e.g. the id columns)
+		// render nowhere and are silently dropped. Leaving the table unpinned lets
+		// the row split cleanly. Not dropping cells matters more than perfect
+		// column alignment. The tall row usually lands on a later continuation
+		// page (not laid out yet at this first-fragment capture), so measure it on
+		// an off-screen probe that applies the candidate pinned geometry.
+		if (this.pinningWouldStrandRow(sourceTable, renderedTable, colWidths)) {
+			return;
+		}
+
 		sourceTable[SPLIT_TABLE_COL_WIDTHS] = colWidths;
+	}
+
+	// True if, at the candidate pinned column widths, any body row of the source
+	// table would render taller than the space available below the replicated
+	// header on a continuation page. Such a row cannot be placed on a
+	// continuation fragment and is stranded by the split machinery. Measured on an
+	// off-screen clone because the source table is display:none and the tall row
+	// is usually not laid out yet when this first-fragment capture runs.
+	pinningWouldStrandRow(sourceTable, renderedTable, colWidths) {
+		let area = renderedTable.closest && renderedTable.closest(".pagedjs_area");
+		let pageHeight = area ? area.getBoundingClientRect().height : 0;
+		if (!(pageHeight > 0)) {
+			return false;
+		}
+
+		let probe = document.createElement("div");
+		probe.setAttribute("aria-hidden", "true");
+		probe.style.cssText = "position:absolute;left:-99999px;top:0;visibility:hidden;";
+		let clone = sourceTable.cloneNode(true);
+		Array.from(clone.querySelectorAll("colgroup")).forEach((cg) => cg.remove());
+		clone.style.tableLayout = "fixed";
+		clone.style.width = colWidths.reduce((sum, width) => sum + width, 0) + "px";
+		clone.style.maxWidth = "none";
+		let colgroup = document.createElement("colgroup");
+		colWidths.forEach((width) => {
+			let col = document.createElement("col");
+			col.style.width = width + "px";
+			colgroup.appendChild(col);
+		});
+		clone.insertBefore(colgroup, clone.firstChild);
+		probe.appendChild(clone);
+		document.body.appendChild(probe);
+
+		let stranded = false;
+		try {
+			let thead = clone.querySelector("thead");
+			let available = pageHeight - (thead ? thead.getBoundingClientRect().height : 0);
+			stranded = Array.from(clone.querySelectorAll("tbody > tr"))
+				.some((row) => row.getBoundingClientRect().height > available);
+		} finally {
+			document.body.removeChild(probe);
+		}
+		return stranded;
 	}
 
 	tableHasRowspan(table) {
