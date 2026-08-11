@@ -47,6 +47,120 @@ class Splits extends Handler {
 		}
 	}
 
+	// A table laid out with `table-layout: auto` sizes its columns from its
+	// content, so removing the overflow re-sizes them: the fragment that stays
+	// behind is measured, a break is chosen from that measurement, and then
+	// extracting the tail changes the very widths the measurement was based on.
+	// A couple of pixels is enough to make an *earlier* row wrap one line further,
+	// which pushes every row below it down and can carry the last line of the page
+	// past the bottom of the content box. Because page content is laid out as a
+	// multi-column container, such a line does not simply clip at the bottom — it
+	// reflows into the next (off-page) column, where it is clipped away entirely
+	// and dropped from the printed output, while the next page resumes after it.
+	// Nothing re-validates the page once the overflow has been removed, so the
+	// line is lost from both pages.
+	//
+	// Fix: measure the columns before the overflow is removed and re-apply those
+	// widths afterwards, so extraction cannot change them and the layout the break
+	// was computed from is preserved. The widths written are the ones the fragment
+	// already had, so this pins the geometry rather than changing it.
+	onOverflow(overflow, rendered, bounds, layout) {
+		this.pendingColumnFreeze = undefined;
+
+		if (!overflow || !overflow.startContainer || !rendered) {
+			return;
+		}
+
+		let container = overflow.startContainer;
+		let element = container.nodeType === 1 ? container : container.parentElement;
+		let renderedTable = element && element.closest ? element.closest("table") : null;
+		if (!renderedTable || !rendered.contains(renderedTable)) {
+			return;
+		}
+
+		// Already pinned (a rebuilt continuation fragment): its widths are fixed
+		// and cannot drift, so there is nothing to preserve.
+		if (renderedTable.querySelector("colgroup[data-split-table-colgroup]")) {
+			return;
+		}
+
+		let ref = renderedTable.getAttribute("data-ref");
+		let sourceTable = ref && this.chunker && this.chunker.source
+			? this.chunker.source.querySelector(`[data-ref='${ref}']`)
+			: null;
+		if (!sourceTable) {
+			return;
+		}
+
+		// Same gates as the continuation pinning below: an ambiguous column
+		// mapping, or a table with a row taller than the page, must be left alone.
+		// The tall-row gate is what keeps this away from tables whose rows have to
+		// split mid-row, where a fixed colgroup mispositions the fragment.
+		if (this.tableHasRowspan(sourceTable)) {
+			return;
+		}
+
+		let referenceRow = renderedTable.querySelector("tbody > tr");
+		if (!referenceRow) {
+			return;
+		}
+
+		let cells = Array.from(referenceRow.children);
+		if (!cells.length || cells.some((cell) => parseInt(cell.getAttribute("colspan") || "1", 10) > 1)) {
+			return;
+		}
+
+		let expectedColumns = this.tableColumnCount(sourceTable);
+		if (expectedColumns && cells.length !== expectedColumns) {
+			return;
+		}
+
+		let colWidths = cells.map((cell) => Math.round(cell.getBoundingClientRect().width));
+		if (colWidths.some((width) => !(width > 0))) {
+			return;
+		}
+
+		if (this.pinningWouldStrandRow(sourceTable, renderedTable, colWidths)) {
+			return;
+		}
+
+		this.pendingColumnFreeze = { table: renderedTable, colWidths };
+	}
+
+	afterOverflowRemoved(removed, rendered, layout) {
+		let pending = this.pendingColumnFreeze;
+		this.pendingColumnFreeze = undefined;
+
+		if (!pending || !rendered || !rendered.contains(pending.table)) {
+			return;
+		}
+
+		this.freezeTableColumns(pending.table, pending.colWidths);
+	}
+
+	// Pin `table` to the given column widths. Marked with the same
+	// data-split-table-colgroup attribute the rebuilt continuations use, so the
+	// overflow/break machinery keeps ignoring the injected colgroup (it carries no
+	// data-ref and must never be chosen as a break point).
+	freezeTableColumns(table, colWidths) {
+		if (table.querySelector("colgroup[data-split-table-colgroup]")) {
+			return;
+		}
+
+		let colgroup = document.createElement("colgroup");
+		colgroup.setAttribute("data-split-table-colgroup", "");
+		colWidths.forEach((width) => {
+			let col = document.createElement("col");
+			col.style.width = width + "px";
+			colgroup.appendChild(col);
+		});
+
+		table.insertBefore(colgroup, table.firstChild);
+		table.style.tableLayout = "fixed";
+		table.style.width = colWidths.reduce((sum, width) => sum + width, 0) + "px";
+		table.style.maxWidth = "none";
+	}
+
 	captureSplitTableGeometry(pageElement, breakToken, chunker) {
 		if (!breakToken || !breakToken.node || !chunker || !chunker.source) {
 			return;

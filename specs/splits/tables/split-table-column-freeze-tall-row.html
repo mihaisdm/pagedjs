@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta http-equiv="Content-Type" content="text/html;charset=utf-8"/>
+	<title>Split table column freeze — tall row</title>
+	<script src="../../../dist/paged.polyfill.js"></script>
+	<style>
+		@page {
+			size: A4;
+			margin: 16mm 16mm 18mm 18mm;
+		}
+
+		body { font-family: sans-serif; font-size: 10pt; }
+
+		table {
+			width: 100%;
+			border-collapse: collapse;
+			font-size: 8.6pt;
+			line-height: 1.12;
+		}
+
+		th, td {
+			border: 1px solid #333;
+			padding: 0.16rem 0.22rem;
+			vertical-align: top;
+			text-align: left;
+			overflow-wrap: anywhere;
+			word-break: break-word;
+		}
+	</style>
+</head>
+<body>
+<h3>Alarms</h3>
+<table>
+	<thead>
+	<tr>
+		<th>GroupID</th>
+		<th>AlarmID</th>
+		<th>Managed object</th>
+		<th>Explanation</th>
+	</tr>
+	</thead>
+	<tbody id="rows">
+	<!-- rows injected below -->
+	</tbody>
+</table>
+
+<script>
+	// One row is deliberately taller than the page content area, so it must split
+	// mid-row. Pinning such a table lays that row's on-page fragment out at full
+	// page height and drops its short leading cells, which is why the pinning
+	// guard refuses these tables — the freeze must respect that same guard.
+	const tbody = document.getElementById("rows");
+	const ROWS = 8;
+	const TALL_ROW = 4;
+
+	for (let r = 1; r <= ROWS; r++) {
+		const tr = document.createElement("tr");
+		const cell = (text) => {
+			const td = document.createElement("td");
+			td.textContent = text;
+			tr.appendChild(td);
+		};
+
+		cell("G" + r);
+		cell("A" + r);
+		cell("MO-" + r);
+
+		if (r === TALL_ROW) {
+			// Comfortably more than one page of prose in a single cell.
+			const words = [];
+			for (let k = 1; k <= 1400; k++) words.push("t" + r + "w" + k);
+			cell(words.join(" "));
+		} else {
+			cell("Short explanation for alarm " + r + ".");
+		}
+
+		tbody.appendChild(tr);
+	}
+</script>
+</body>
+</html>

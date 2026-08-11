@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta http-equiv="Content-Type" content="text/html;charset=utf-8"/>
+	<title>Split table column freeze</title>
+	<script src="../../../dist/paged.polyfill.js"></script>
+	<style>
+		@page {
+			size: A4;
+			margin: 16mm 16mm 18mm 18mm;
+		}
+
+		body { font-family: sans-serif; font-size: 10pt; }
+
+		/* Deliberately NOT table-layout: fixed — the columns are sized from the
+		   content, which is the regime in which removing the overflow can re-size
+		   them and invalidate the break that was just computed. */
+		table {
+			width: 100%;
+			border-collapse: collapse;
+			font-size: 8.6pt;
+			line-height: 1.12;
+		}
+
+		th, td {
+			border: 1px solid #333;
+			padding: 0.16rem 0.22rem;
+			vertical-align: top;
+			text-align: left;
+			overflow-wrap: anywhere;
+			word-break: break-word;
+		}
+	</style>
+</head>
+<body>
+<h3>Charts</h3>
+<table>
+	<thead>
+	<tr>
+		<th>Chart name</th>
+		<th>KPI formula</th>
+		<th>Input filter</th>
+		<th>Aggregation type</th>
+		<th>Drill dimensions</th>
+	</tr>
+	</thead>
+	<tbody id="rows">
+	<!-- rows injected below -->
+	</tbody>
+</table>
+
+<script>
+	// An ordinary content-sized table, long enough to split across pages. Rows are
+	// a small fraction of the page height, so nothing here needs to split mid-row
+	// and the tall-row guard must NOT suppress pinning.
+	const tbody = document.getElementById("rows");
+	const ROWS = 26;
+
+	for (let r = 1; r <= ROWS; r++) {
+		const tr = document.createElement("tr");
+		const cell = (html) => {
+			const td = document.createElement("td");
+			td.innerHTML = html;
+			tr.appendChild(td);
+		};
+
+		cell("N" + r + " Connectivity Failure Rate");
+		cell("1- Count where ([S1 - N" + r + " Connectivity Success])/ Count");
+		cell("[S1 - N" + r + " Connectivity Request]");
+		cell("Common – MME Name");
+		cell("Common – eNodeB Name <br /><br /> S1 - N" + r + " Connectivity Reject Cause");
+
+		tbody.appendChild(tr);
+	}
+</script>
+</body>
+</html>
