@@ -1035,8 +1035,40 @@ class Layout {
 						}
 						range = document.createRange();
 						offset = this.textBreak(node, start, end, vStart, vEnd);
-						if (!offset) {
+						if (typeof offset === "undefined") {
+							// No break point inside this text node.
 							range = undefined;
+						} else if (offset === 0) {
+							// The very first line of the node already crosses the bound, so
+							// there is nothing of it to keep on this page. Offset 0 only
+							// became reachable once a vertical straddle started breaking at
+							// the start of its line (see textBreak), and it must not be
+							// conflated with "no break found" — doing so leaves the page with
+							// no break token at all and the straddling line clipped, which is
+							// the bug that fix addresses.
+							//
+							// Inside a table this means the row's *first* line straddles the
+							// page bottom, so the row cannot be split here at all: breaking
+							// before this cell's text would still strand the first line of
+							// every other cell in the row below the content box — including
+							// short single-line cells (an id column, say) that have no later
+							// line to be pushed down and would simply vanish. Move the whole
+							// row instead. Only when a preceding row with content stays
+							// behind, so the page keeps something and the break is guaranteed
+							// to advance; a first body row is left to the orphan handling
+							// above and to plain node-level breaking.
+							let straddlingRow = parentOf(node, "TR", rendered);
+							let precedingRow = straddlingRow && straddlingRow.previousElementSibling;
+							while (precedingRow &&
+								!(precedingRow.textContent && precedingRow.textContent.trim().length)) {
+								precedingRow = precedingRow.previousElementSibling;
+							}
+
+							if (straddlingRow && precedingRow) {
+								range.selectNode(straddlingRow);
+							} else {
+								range.selectNode(node);
+							}
 						} else {
 							range.setStart(node, offset);
 						}
@@ -1144,7 +1176,10 @@ class Layout {
 				break;
 			}
 
-			if (right > end || bottom > vEnd) {
+			// Horizontal overflow: the bound falls *inside* this word, so the break
+			// point is a specific letter. Walk the letters to find the one that
+			// crosses it.
+			if (right > end) {
 				let letterwalker = letters(word);
 				let letter, nextLetter, doneLetter;
 
@@ -1168,6 +1203,27 @@ class Layout {
 						break;
 					}
 				}
+			}
+
+			// Vertical overflow: this word sits on a line that crosses the bottom of
+			// the page content box. A line of text cannot be split across that
+			// boundary, so the whole line has to move to the next page — break at
+			// this word. It is necessarily the *first* word of the straddling line,
+			// because every word on the lines above it ended above the bound.
+			//
+			// Letter-walking a vertical overflow (as the horizontal case above does)
+			// is what this replaces, and it silently dropped a line of text: every
+			// letter on the straddling line shares the same `top`, so none of them
+			// satisfies `top >= vEnd` and the walk runs on into the *next* line,
+			// returning that line's offset. The straddling line then stayed on the
+			// current page — below the content box, clipped away by its
+			// overflow:hidden — while the next page resumed after it. Chromium drops
+			// fully clipped glyphs when printing, so such a line appeared on neither
+			// page (e.g. a table cell reading "Common - eNodeB Name <br><br> S1 -
+			// PDN Connectivity Reject Cause" lost the "S1 - PDN" line at the break).
+			if (typeof offset === "undefined" && bottom > vEnd) {
+				offset = word.startOffset;
+				break;
 			}
 
 		}

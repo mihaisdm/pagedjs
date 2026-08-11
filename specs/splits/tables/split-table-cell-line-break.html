@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta http-equiv="Content-Type" content="text/html;charset=utf-8"/>
+	<title>Split table cell line break</title>
+	<script src="../../../dist/paged.polyfill.js"></script>
+	<style>
+		@page {
+			size: A4;
+			margin: 16mm 16mm 18mm 18mm;
+		}
+
+		body { font-family: sans-serif; font-size: 10pt; }
+
+		/* Fractional font-size and line-height (as used by the wide print tables
+		   this regression came from) put successive line boxes on non-integer y
+		   offsets, so the bottom of the page content box lands *inside* a line box
+		   rather than neatly between two of them. That is the condition under which
+		   a straddling line used to be dropped. */
+		table {
+			table-layout: fixed;
+			width: 100%;
+			max-width: 100%;
+			border-collapse: collapse;
+			font-size: 8.6pt;
+			line-height: 1.12;
+		}
+
+		th, td {
+			border: 1px solid #333;
+			padding: 0.16rem 0.22rem;
+			vertical-align: top;
+			text-align: left;
+			overflow-wrap: anywhere;
+			word-break: break-word;
+			hyphens: auto;
+		}
+	</style>
+</head>
+<body>
+<h3>Chart catalogue</h3>
+<table>
+	<thead>
+	<tr>
+		<th>ID</th>
+		<th>Formula</th>
+		<th>Dimensions</th>
+	</tr>
+	</thead>
+	<tbody id="rows">
+	<!-- rows injected below -->
+	</tbody>
+</table>
+
+<script>
+	// Every cell carries a run of uniquely named tokens long enough to wrap over
+	// several lines. That makes the page boundary fall *inside* a multi-line text
+	// node instead of on a row or element boundary, which is what routes the break
+	// through Layout.textBreak.
+	//
+	// The third column additionally reproduces the shape this regression was
+	// reported against: a cell whose content is a label, then "<br /><br />", then
+	// a second phrase that wraps over more than one line. The blank line the two
+	// <br>s introduce is what pushed the following line across the page bottom.
+	const tbody = document.getElementById("rows");
+	const ROWS = 30;
+	const TOKENS_PER_CELL = 14;
+
+	for (let r = 1; r <= ROWS; r++) {
+		const tr = document.createElement("tr");
+
+		const id = document.createElement("td");
+		id.textContent = "r" + r;
+		tr.appendChild(id);
+
+		const formulaTokens = [];
+		for (let k = 1; k <= TOKENS_PER_CELL; k++) formulaTokens.push("F" + r + "x" + k);
+		const formula = document.createElement("td");
+		formula.textContent = formulaTokens.join(" ");
+		tr.appendChild(formula);
+
+		const dimTokens = [];
+		for (let k = 1; k <= TOKENS_PER_CELL; k++) dimTokens.push("D" + r + "x" + k);
+		const dims = document.createElement("td");
+		dims.innerHTML = "HEAD-" + r + " <br /><br /> " + dimTokens.join(" ");
+		tr.appendChild(dims);
+
+		tbody.appendChild(tr);
+	}
+</script>
+</body>
+</html>
