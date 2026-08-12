@@ -619,6 +619,67 @@ class Layout {
 		return breakNode;
 	}
 
+	// A `break-inside: avoid` cell asks that the whole row move to the next page
+	// rather than break mid-cell — which is what a reader needs, because a break
+	// inside one cell strands every cell after it in document order on the next
+	// page, leaving the row's columns staggered across the boundary instead of
+	// side by side.
+	//
+	// NOTE: unreachable from portal-pdftools today. Nothing there declares
+	// `break-inside: avoid` on a cell, because doing so exposes a separate upstream
+	// defect: the move-the-whole-row branch drops rows outright (eoXDR loses a
+	// ~4200-character table row and duplicates a page). This guard is still correct
+	// and still required — it is what stops the branch stalling layout on rows too
+	// tall to move — so it stays, ready for whoever fixes the row-dropping. See
+	// portal-pdftools/docs/offpage-column-content-loss.md §13.
+	//
+	// Moving the row only helps when an earlier body row of the same table is
+	// already on this page: the row then began partway down it, and the next page
+	// has more room. When the row is the first one on the page there is nowhere to
+	// move it to — `findBreakToken` would name the same row again, the chunker
+	// would see the break token repeat, and layout would stop with the rest of the
+	// document unrendered. Those rows must keep splitting in place, staggered
+	// columns and all.
+	//
+	// Decided from content rather than geometry, like `hasRenderedContentBefore`:
+	// a continuation page carries a replicated header, so the first row on it does
+	// NOT start at the top of the content box and any position-based test would
+	// read it as movable.
+	//
+	// Header rows are excluded on both sides. A `thead` cell never moves its row,
+	// and a preceding header does not make the first body row movable — pushing
+	// that row alone would strand the header. `orphanTableForNode` already handles
+	// that case by moving the whole table, and returning false here is what lets
+	// it: this branch runs first and would otherwise preempt it.
+	// Walks backwards from `row` rather than querying the table. This is reached
+	// from the `findOverflow` walker, so it runs on every overflow probe of every
+	// page; `table.querySelectorAll("tbody > tr")` would materialise the whole row
+	// list each time, and the reference manuals are single tables running to 700+
+	// pages. Walking previous siblings answers in one step for the common case —
+	// the row above has text — and never builds a list.
+	rowCanMoveToNextPage(row) {
+		if (!row || row.nodeName !== "TR") {
+			return false;
+		}
+		let body = row.parentElement;
+		if (!body || body.nodeName !== "TBODY") {
+			return false;
+		}
+		for (let sibling = row.previousElementSibling; sibling; sibling = sibling.previousElementSibling) {
+			if (sibling.nodeName === "TR" && sibling.textContent.trim().length) {
+				return true;
+			}
+		}
+		// Confluence exports occasionally split a table's rows over several tbody
+		// groups, so an earlier group counts too.
+		for (let group = body.previousElementSibling; group; group = group.previousElementSibling) {
+			if (group.nodeName === "TBODY" && group.textContent.trim().length) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	// Walk up from `node` to `container`, looking for any earlier sibling that
 	// carries rendered content. Used to tell whether a table sits at the very
 	// top of a (fresh) page or whether other content precedes it: a table at
@@ -950,7 +1011,10 @@ class Layout {
 
 					// Check if the node is inside a break-inside: avoid table cell
 					const insideTableCell = parentOf(node, "TD", rendered);
-					if (insideTableCell && window.getComputedStyle(insideTableCell)["break-inside"] === "avoid") {
+					const avoidInsideCell = insideTableCell &&
+						window.getComputedStyle(insideTableCell)["break-inside"] === "avoid" &&
+						this.rowCanMoveToNextPage(insideTableCell.parentElement);
+					if (avoidInsideCell) {
 						// breaking inside a table cell produces unexpected result, as a workaround, we forcibly avoid break inside in a cell.
 						// But we take the whole row, not just the cell that is causing the break.
 						prev = insideTableCell.parentElement;
