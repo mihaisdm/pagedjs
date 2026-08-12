@@ -2,6 +2,44 @@ import Handler from "../handler.js";
 import {attr, querySelectorEscape, UUID} from "../../utils/utils.js";
 import csstree from "css-tree";
 
+// How many later pages to wait for a target's content before giving up and numbering
+// against the fragment that carries the id. The continuation appears on the very next
+// page, so this only needs to cover a target that never renders text at all.
+const MAX_TARGET_DEFERRALS = 2;
+
+// Exported for the unit test; nothing outside this module uses them.
+export function hasRenderedText(element) {
+	return !!element && (element.textContent || "").trim().length > 0;
+}
+
+/**
+ * The fragment of an element that a reader would actually turn to. Fragments of one
+ * source node share a `data-ref`, but only the first keeps the `id`, and that first
+ * fragment can be an empty stub left on the previous page — an element's top edge alone,
+ * where `break-before` moved its content to the next page.
+ *
+ * @param {Element} element first fragment, the one carrying the id
+ * @param {Element} root the rendered pages, so source nodes are never considered
+ * @returns {Element} the first fragment that renders text, or `element` itself when it
+ *   is not split or no fragment carries text
+ */
+export function firstFragmentWithText(element, root) {
+	if (!element || hasRenderedText(element)) {
+		return element;
+	}
+	let ref = element.getAttribute && element.getAttribute("data-ref");
+	if (!ref || !root) {
+		return element;
+	}
+	let fragments = root.querySelectorAll(`[data-ref="${ref}"]`);
+	for (let i = 0; i < fragments.length; i++) {
+		if (hasRenderedText(fragments[i])) {
+			return fragments[i];
+		}
+	}
+	return element;
+}
+
 class TargetCounters extends Handler {
 	constructor(chunker, polisher, caller) {
 		super(chunker, polisher, caller);
@@ -90,6 +128,26 @@ class TargetCounters extends Handler {
 				}
 				let val = attr(selected, target.args);
 				let element = chunker.pagesArea.querySelector(querySelectorEscape(val));
+
+				let resolveAgainst = firstFragmentWithText(element, chunker.pagesArea);
+
+				if (element && !hasRenderedText(resolveAgainst)) {
+					// Nothing of the target has rendered yet. Only the first fragment of a
+					// split element keeps the id, and a break-before leaves that fragment
+					// behind as an empty stub, so numbering against it names the page
+					// before the one the reader turns to. The continuation does not exist
+					// on this pass — the split marker is not even set yet — so leave the
+					// target unresolved; the query above retries it after every later page.
+					let deferrals = "data-" + target.variable + "-deferred";
+					let tries = parseInt(selected.getAttribute(deferrals) || "0", 10) + 1;
+					if (tries <= MAX_TARGET_DEFERRALS) {
+						selected.setAttribute(deferrals, String(tries));
+						return;
+					}
+					// Out of patience: a target that never renders text still needs a number.
+				}
+
+				element = resolveAgainst;
 
 				if (element) {
 					let selector = UUID();
