@@ -17,7 +17,7 @@ const plugins = [
 	}),
 	json(),
 	license({
-		banner: "@license Paged.js v<%= pkg.version %> | MIT | https://gitlab.coko.foundation/pagedjs/pagedjs",
+		banner: "@license Paged.js v<%= pkg.version %> | MIT | https://github.com/mihaisdm/pagedjs",
 	})
 ];
 
