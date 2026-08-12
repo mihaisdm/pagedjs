@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Repeated cell text</title>
+    <script>
+      // Page height is settable with ?h=<mm> so a probe can sweep it: the defect only
+      // bites when the break lands ON one of the identical "OR" nodes, which depends on
+      // exactly how many lines of the cell fit.
+      (function () {
+        var m = /[?&]h=(\d+(?:\.\d+)?)/.exec(location.search);
+        var h = m ? m[1] : "58";
+        document.write('<style>@page { size: 100mm ' + h + 'mm; margin: 4mm; }</style>');
+      })();
+    </script>
+    <script src="../../../dist/paged.polyfill.js"></script>
+    <style>
+      table { table-layout: fixed; width: 100%; border-collapse: collapse;
+              font-size: 7.4pt; line-height: 1.15; }
+      th { text-align: left; }
+      td, th { vertical-align: top; padding: 0 1px; border: 1px solid #999; }
+      .c-name { width: 14mm; }
+      p { margin: 0 0 2px; }
+    </style>
+  </head>
+  <body>
+    <div id="content">
+      <table>
+        <thead>
+          <tr><th class="c-name">Name</th><th>Description</th><th>Input filter</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td data-cell="lead-name">Lead</td>
+            <td data-cell="lead-desc"><p>Denotes the answered rate of the Mobile Calls originating.</p></td>
+            <td data-cell="lead-filter">[Lead Attempt]</td>
+          </tr>
+          <!-- The cell under test is `split-filter`. It is a list of bracketed terms
+               separated by identical "OR" text nodes, which is how the exported
+               manuals write an input filter.
+               Resolving a rendered text node back to its source counterpart BY TEXT
+               matches the first sibling whose content contains it -- so a break
+               landing on one "OR" resolved to an earlier, identical "OR", and the
+               continuation resumed before the point the page had actually reached.
+               Everything in between then printed on both pages. Measured on the
+               eoLive Dataviews Catalog p283/p284: 73 characters repeated.
+               Identical siblings cannot be told apart by their text; only position
+               distinguishes them. -->
+          <tr>
+            <td data-cell="split-name">Split</td>
+            <td data-cell="split-desc"><p>Denotes the failure rate of the data session initiation.</p></td>
+            <td data-cell="split-filter">[Initial Context Setup Request]<br />OR<br />[Service Request Attempt]<br />OR<br />[Activate Default EPS Bearer Context Attempt]<br />OR<br />[Control Plane Service Request Attempt]<br />OR<br />[UE Context Resume Request]<br />OR<br />[Tracking Area Update Request]<br />OR<br />[Attach Request Attempt]<br />OR<br />[Detach Request Attempt]</td>
+          </tr>
+          <tr>
+            <td data-cell="tail-name">Tail</td>
+            <td data-cell="tail-desc"><p>Denotes the failure rate of the Location Update procedure.</p></td>
+            <td data-cell="tail-filter">[Update Attempt]</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <script>
+      window.__SOURCE_TEXT__ = document.getElementById("content").textContent;
+      window.__SOURCE_CELLS__ = (function () {
+        var out = {};
+        var cells = document.querySelectorAll("#content [data-cell]");
+        for (var i = 0; i < cells.length; i++) {
+          out[cells[i].getAttribute("data-cell")] =
+            cells[i].textContent.replace(/\s+/g, " ").trim();
+        }
+        return out;
+      })();
+    </script>
+  </body>
+</html>

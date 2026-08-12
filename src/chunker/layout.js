@@ -141,6 +141,10 @@ class Layout {
 
 		let prevBreakToken = breakToken || new BreakToken(start);
 
+		// Cells whose content the previous page already rendered ahead of the break, so
+		// the row's later columns sat beside the broken cell instead of jumping a page.
+		let emittedCells = (breakToken && breakToken.emittedCells) || [];
+
 		this.hooks && this.hooks.onPageLayout.trigger(wrapper, prevBreakToken, this);
 
 		while (!done && !newBreakToken) {
@@ -170,7 +174,7 @@ class Layout {
 					return new RenderResult(undefined, new OverflowContentError("Unable to layout item", [prevNode]));
 				}
 
-				this.rebuildTableFromBreakToken(newBreakToken, wrapper);
+				this.rebuildTableFromBreakToken(newBreakToken, wrapper, bounds, emittedCells);
 
 				this.hooks && this.hooks.beforeRenderResult.trigger(newBreakToken, wrapper, this);
 				return new RenderResult(newBreakToken);
@@ -192,7 +196,7 @@ class Layout {
 				if (!newBreakToken) {
 					newBreakToken = this.breakAt(node);
 				} else {
-					this.rebuildTableFromBreakToken(newBreakToken, wrapper);
+					this.rebuildTableFromBreakToken(newBreakToken, wrapper, bounds, emittedCells);
 				}
 
 				if (newBreakToken && newBreakToken.equals(prevBreakToken)) {
@@ -226,6 +230,31 @@ class Layout {
 				}
 			}
 
+			// A cell whose content was already emitted on the page this row broke from
+			// must not render it again. Keep the empty cell box so the continuation row
+			// still has all its columns, and skip its children.
+			if (node.nodeName === "TD") {
+				let already = null;
+				for (let i = 0; i < emittedCells.length; i++) {
+					if (emittedCells[i].cell === node) { already = emittedCells[i]; break; }
+				}
+				if (already) {
+					// `null` for the break token, deliberately: it points into the cell the
+					// row broke inside, and `append` applies its text offset to whatever it
+					// clones. Handing it a different cell lets that offset shift this
+					// cell's text, so the character count below no longer lines up.
+					if (already.chars === -1) {
+						// Shown whole on the previous page: an empty box keeps the column.
+						this.append(node, wrapper, null, true);
+					} else {
+						this.dropLeadingText(
+							this.append(node, wrapper, null, false), already.chars);
+					}
+					walker = walk(nodeAfter(node, source), source);
+					continue;
+				}
+			}
+
 			// Should the Node be a shallow or deep clone
 			let shallow = isContainer(node);
 
@@ -251,7 +280,7 @@ class Layout {
 				if (!newBreakToken) {
 					newBreakToken = this.breakAt(node);
 				} else {
-					this.rebuildTableFromBreakToken(newBreakToken, wrapper);
+					this.rebuildTableFromBreakToken(newBreakToken, wrapper, bounds, emittedCells);
 				}
 
 				length = 0;
@@ -274,7 +303,7 @@ class Layout {
 
 				if (newBreakToken) {
 					length = 0;
-					this.rebuildTableFromBreakToken(newBreakToken, wrapper);
+					this.rebuildTableFromBreakToken(newBreakToken, wrapper, bounds, emittedCells);
 				}
 
 				if (newBreakToken && newBreakToken.equals(prevBreakToken)) {
@@ -427,7 +456,120 @@ class Layout {
 		return clone;
 	}
 
-	rebuildTableFromBreakToken(breakToken, dest) {
+	// Trim a rendered cell to the lines that fit above `limit.bottom`, and return how
+	// many characters were kept: -1 when it already fitted whole, 0 when nothing fitted.
+	//
+	// This is what lets a row break like a row. The page break cuts the row at one
+	// height, so every cell of it should show the content above that line and continue
+	// the rest -- not survive whole or jump a page as a unit.
+	trimCellToFit(clone, limit) {
+		let box = getBoundingClientRect(clone);
+
+		// Wholly inside the page: nothing to do.
+		if (box.right <= limit.right + 0.5 && box.bottom <= limit.bottom + 0.5) {
+			return -1;
+		}
+		// Wholly in the off-page column: none of it is on this page.
+		if (box.left >= limit.right) {
+			return 0;
+		}
+
+		// Otherwise it straddles. Note the criterion: a cell whose content does not fit
+		// is not clipped at the page bottom, it is flowed into paged.js's off-page second
+		// column (see section 3), so its rect spans both columns -- left inside the content
+		// box, right out at ~2500px. "Does this character fit" therefore means "is it
+		// still in the first column", not "is it above the page bottom". Testing the
+		// bottom alone finds no cut point at all and the cell gets moved whole.
+		const fits = (rect) => rect.right <= limit.right + 0.5 && rect.bottom <= limit.bottom + 0.5;
+
+		let walker = document.createTreeWalker(clone, NodeFilter.SHOW_TEXT);
+		let node, cutNode = null, cutOffset = 0;
+		while ((node = walker.nextNode())) {
+			let len = node.textContent.length;
+			if (!len) {
+				continue;
+			}
+			let whole = document.createRange();
+			whole.selectNodeContents(node);
+			if (fits(getBoundingClientRect(whole))) {
+				continue;
+			}
+			// This text node straddles the boundary. Find the largest prefix still on page.
+			let lo = 0, hi = len;
+			while (lo < hi) {
+				let mid = Math.ceil((lo + hi) / 2);
+				let probe = document.createRange();
+				probe.setStart(node, 0);
+				probe.setEnd(node, mid);
+				if (fits(getBoundingClientRect(probe))) {
+					lo = mid;
+				} else {
+					hi = mid - 1;
+				}
+			}
+			cutNode = node;
+			cutOffset = lo;
+			break;
+		}
+
+		// No text crossed the boundary, so the cell's CONTENT fits -- even though its box
+		// did not. A <td> stretches to the height of its ROW, so for a short cell in a tall
+		// row `box.bottom` is the row's bottom and reports an overflow the text does not
+		// have. Returning 0 here emptied every short cell of a splitting row (the reported
+		// case: columns 3, 4 and 6 blank while 2 and 5 split correctly). Measure the text.
+		if (!cutNode) {
+			return -1;
+		}
+		let tail = document.createRange();
+		tail.setStart(cutNode, cutOffset);
+		tail.setEndAfter(clone.lastChild);
+		tail.deleteContents();
+		// Nothing of it fitted after all: let the continuation render the cell whole.
+		return clone.textContent.length || 0;
+	}
+
+	// Remove the first `count` characters of text from a cell rendered on a continuation
+	// page, because they were already shown on the page the row broke from. Counting
+	// characters rather than mapping nodes is exact here: both copies are clones of the
+	// same source cell, so their text nodes correspond one for one.
+	dropLeadingText(element, count) {
+		let walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+		let node, remaining = count;
+		while (remaining > 0 && (node = walker.nextNode())) {
+			let len = node.textContent.length;
+			if (len <= remaining) {
+				remaining -= len;
+				node.textContent = "";
+			} else {
+				node.textContent = node.textContent.substring(remaining);
+				remaining = 0;
+			}
+		}
+		// Blocks and <br>s emptied above would otherwise print as blank lines before the
+		// continuation's first word.
+		let first;
+		while ((first = element.firstChild) &&
+			!(first.textContent || "").trim().length &&
+			element.childNodes.length > 1) {
+			first.remove();
+		}
+	}
+
+	// When a row breaks inside a cell the break point is one position in document order,
+	// so the rest of that cell AND every later cell of the row travel to the next page.
+	// Upstream compensated by appending the following cells here as EMPTY boxes
+	// (`shallow`), which completes the row's borders but leaves the reader with blank
+	// columns on one page and the earlier columns blank on the other.
+	//
+	// Instead they are appended with their content, trimmed to what fits, and recorded on
+	// the break token so the continuation renders the remainder rather than the whole cell
+	// again. A cell that fits nothing here is left entirely to the continuation.
+	//
+	// The fit check is what makes this safe. This runs AFTER removeOverflow, so nothing
+	// downstream re-validates what is appended: recording a cell that overhangs the page
+	// means it is culled from the PDF and skipped on the continuation, i.e. lost. Measured
+	// without the check: eolive-catalog 399 -> 384 pages and 9231 characters gone.
+	rebuildTableFromBreakToken(breakToken, dest, bounds, alreadyEmitted) {
 		if (!breakToken || !breakToken.node) {
 			return;
 		}
@@ -438,9 +580,50 @@ class Layout {
 			if (!rendered) {
 				return;
 			}
+			let limit = (bounds || this.bounds);
+			let emitted = [];
+			let prior = alreadyEmitted || [];
 			while ((td = td.nextElementSibling)) {
-				this.append(td, dest, null, true);
+				// A row can span three or more pages. On the second continuation this cell
+				// may ALREADY have had a prefix shown, so re-appending it whole and trimming
+				// from its start would repeat that prefix. Carry the count forward.
+				let before = 0;
+				for (let i = 0; i < prior.length; i++) {
+					if (prior[i].cell === td) { before = prior[i].chars; break; }
+				}
+				if (before === -1) {
+					// Finished on an earlier page: an empty box keeps the column.
+					this.append(td, dest, null, true);
+					emitted.push({ cell: td, chars: -1 });
+					continue;
+				}
+				let clone = this.append(td, dest, null, false);
+				if (before > 0) {
+					this.dropLeadingText(clone, before);
+				}
+				let kept = this.trimCellToFit(clone, limit);
+				if (kept === 0) {
+					// None of the remainder fits. Leave an empty box; the continuation picks
+					// up from the same place, so the record must survive unchanged.
+					clone.parentNode.replaceChild(cloneNode(td, false), clone);
+					if (before > 0) {
+						emitted.push({ cell: td, chars: before });
+					}
+				} else if (kept === -1) {
+					emitted.push({ cell: td, chars: -1 });
+				} else {
+					emitted.push({ cell: td, chars: before + kept });
+				}
 			}
+			// Recorded on the break token, not on the source cell. The token is the unit of
+			// work the next page is rendered from, so the list is scoped to exactly the
+			// attempt that produced it. That matters because Page.render lays a page out
+			// again into a shorter box (the off-page re-validation loop): a cell that fitted
+			// on one attempt may not on the next, and a discarded attempt's token is simply
+			// dropped along with its list. State kept on the source instead would leak
+			// between attempts -- a marker left by a discarded attempt makes the
+			// continuation skip content nothing ever emitted, which is silent loss.
+			breakToken.emittedCells = emitted;
 		}
 	}
 
@@ -801,14 +984,39 @@ class Layout {
 				}
 
 				parent = findElement(renderedNode, source);
-				index = indexOfTextNode(temp, parent);
-				// No seperatation for the first textNode of an element
-				if(index === 0) {
-					node = parent;
+
+				// Prefer POSITION over text matching. indexOfTextNode returns the first
+				// text child whose content *contains* temp's, which is the wrong node
+				// whenever a cell repeats a string -- and separator-style cells repeat
+				// them constantly ("OR" between bracketed terms). Resolving to the earlier
+				// twin makes the continuation resume before the point the page actually
+				// ended, so everything in between prints on both pages. Measured on
+				// eoLive Dataviews p283/p284: 73 characters repeated, from an "OR" that
+				// matched an identical "OR" nine children earlier.
+				//
+				// When the rendered container is a complete copy of its source node their
+				// childNodes line up one for one, so the overflow's own child offset is
+				// already the answer. The text search is only needed for a continuation
+				// fragment, whose children are a subset and whose indices really do differ.
+				let positional = null;
+				if (parent && !container.hasAttribute("data-split-from") &&
+					container.childNodes.length === parent.childNodes.length) {
+					positional = child(parent, overflow.startOffset);
+				}
+
+				if (positional) {
+					node = positional;
 					offset = 0;
 				} else {
-					node = child(parent, index);
-					offset = 0;
+					index = indexOfTextNode(temp, parent);
+					// No seperatation for the first textNode of an element
+					if(index === 0) {
+						node = parent;
+						offset = 0;
+					} else {
+						node = child(parent, index);
+						offset = 0;
+					}
 				}
 			}
 		} else {
