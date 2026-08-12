@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Off-page column</title>
+    <script src="../../../dist/paged.polyfill.js"></script>
+    <style>
+      @page { size: 100mm 48mm; margin: 4mm; }
+      /* Fractional metrics, as in the print stylesheet this was found with:
+         line boxes do not divide evenly into the content height, which is what
+         puts a line right at the boundary. */
+      table { table-layout: fixed; width: 100%; border-collapse: collapse;
+              font-size: 8.6pt; line-height: 1.12; }
+      th { text-align: left; }
+      td, th { vertical-align: top; padding: 0 2px; border: 1px solid #999; }
+      td:first-child, th:first-child { width: 16mm; }
+      p { margin: 0 0 2px; }
+    </style>
+  </head>
+  <body>
+    <div id="content">
+      <table>
+        <thead>
+          <tr><th>Chart name</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Lead</td><td><p>Denotes the answered rate of the Mobile Calls originating and terminating.</p><p>Calculated as:</p><p>Denotes the answered rate of the Mobile Calls originating.</p></td></tr>
+          <tr><td>Tall</td><td><p>Denotes the answered rate of the Mobile Calls originating and terminating within the monitored network and calculated as the ratio between the number of answered call attempts and the total number of call attempts observed on the interface during the reporting period which is configurable by the operator  Denotes the answered rate of the Mobile Calls originating and terminating within the monitored network and calculated.</p><p>Calculated as:</p><p>Denotes the answered rate of the Mobile Calls originating and terminating within the monitored network and calculated as the ratio between the number of answered call attempts and the total number of call attempts observed on the interface during the reporting period which is configurable by the operator  Denotes the answered rate of.</p></td></tr>
+          <tr><td>Next</td><td><p>Denotes the answered rate of the Mobile Calls originating and terminating within the monitored network and calculated as the.</p><p>Calculated as:</p><p>Denotes the answered rate of the Mobile Calls originating and terminating within the monitored network.</p></td></tr>
+          <tr><td>Last</td><td><p>Denotes the answered rate of the Mobile Calls originating and terminating within the monitored.</p><p>Calculated as:</p><p>Denotes the answered rate of the Mobile Calls originating and terminating within.</p></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <script>
+      window.__SOURCE_TEXT__ = document.getElementById("content").textContent;
+    </script>
+  </body>
+</html>

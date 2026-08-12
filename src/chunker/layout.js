@@ -21,6 +21,7 @@ import {
 	rebuildAncestors,
 	validNode,
 	walk,
+	withoutInsertedHyphen,
 	words
 } from "../utils/dom.js";
 import BreakToken from "./breaktoken.js";
@@ -765,7 +766,17 @@ class Layout {
 
 			node = child(parent, index);
 
-			offset += node.textContent.indexOf(container.textContent);
+			// Where the rendered slice begins inside the source text. Matched
+			// without any hyphen glyph the break inserted, for the same reason
+			// indexOfTextNode has to. A miss must not be added blindly: -1 would
+			// silently shift the break one character earlier.
+			let sliceStart = node.textContent.indexOf(container.textContent);
+			if (sliceStart === -1) {
+				sliceStart = node.textContent.indexOf(withoutInsertedHyphen(container.textContent));
+			}
+			if (sliceStart > 0) {
+				offset += sliceStart;
+			}
 		}
 
 		if (!node) {
@@ -845,6 +856,46 @@ class Layout {
 			}
 		}
 		return breakToken;
+	}
+
+	// Heights of the line boxes that ended up laid out past the right edge of the
+	// content box, i.e. in the off-page column of the multi-column container this
+	// page is. Such text is laid out but invisible: Chromium keeps
+	// partially-clipped glyphs when printing and culls fully-clipped ones, so it
+	// is dropped from the PDF silently, appearing on neither this page nor the
+	// next.
+	//
+	// Measured per line rect, never on a node's bounding rect: a text node whose
+	// lines straddle the column break has a bounding rect whose `left` is the
+	// column-1 left, which hides the off-page fragment entirely.
+	//
+	// Replicated table decoration is ignored: paged.js injects a header clone (and
+	// a synthetic colgroup) onto continuation fragments, the break machinery
+	// already skips those, and they carry no content of their own, so an empty
+	// replicated header pushed off-page loses nothing and must not trigger a
+	// re-layout.
+	offPageColumnLines(rendered, bounds = this.bounds) {
+		let heights = [];
+		let walker = document.createTreeWalker(rendered, NodeFilter.SHOW_TEXT);
+		let node;
+		while ((node = walker.nextNode())) {
+			if (!node.textContent || !node.textContent.trim()) {
+				continue;
+			}
+			if (isReplicatedTableDecoration(node)) {
+				continue;
+			}
+			let rects = getClientRects(node);
+			if (!rects) {
+				continue;
+			}
+			for (let rect of Array.from(rects)) {
+				if (rect.width > 0 && rect.height > 0 && rect.left >= bounds.right - 0.5) {
+					heights.push(rect.height);
+				}
+			}
+		}
+		return heights;
 	}
 
 	hasOverflow(element, bounds = this.bounds) {

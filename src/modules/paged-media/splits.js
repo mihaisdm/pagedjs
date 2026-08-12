@@ -138,12 +138,38 @@ class Splits extends Handler {
 		this.freezeTableColumns(pending.table, pending.colWidths);
 	}
 
+	// Widths measured from a rendered fragment can be far wider than the page: a
+	// cell holding one very large unbroken blob measures at its natural width, not
+	// the width it was displayed at. Pinning that — which also sets
+	// `max-width: none` — locks the table off the side of the page, and everything
+	// past the content box is culled from the printed output.
+	//
+	// Measured on `self-monitoring-alarm`: a 2-column table pinned to 4252px on a
+	// 665px content box (`frozenCols=[2126px,2126px]`), putting 210 words into the
+	// off-page columns — more off-page content than the bug the freeze was added to
+	// fix. So refuse to pin anything the page cannot show; an unpinned table may
+	// have columns that drift between fragments, which is a cosmetic problem, and
+	// losing the text is not.
+	pinnedWidthFitsPage(table, colWidths) {
+		let content = table.closest && table.closest(".pagedjs_page_content");
+		let available = content ? content.getBoundingClientRect().width : 0;
+		if (!(available > 0)) {
+			return true;
+		}
+		let total = colWidths.reduce((sum, width) => sum + width, 0);
+		return total <= Math.ceil(available);
+	}
+
 	// Pin `table` to the given column widths. Marked with the same
 	// data-split-table-colgroup attribute the rebuilt continuations use, so the
 	// overflow/break machinery keeps ignoring the injected colgroup (it carries no
 	// data-ref and must never be chosen as a break point).
 	freezeTableColumns(table, colWidths) {
 		if (table.querySelector("colgroup[data-split-table-colgroup]")) {
+			return;
+		}
+
+		if (!this.pinnedWidthFitsPage(table, colWidths)) {
 			return;
 		}
 
@@ -241,6 +267,10 @@ class Splits extends Handler {
 		// page (not laid out yet at this first-fragment capture), so measure it on
 		// an off-screen probe that applies the candidate pinned geometry.
 		if (this.pinningWouldStrandRow(sourceTable, renderedTable, colWidths)) {
+			return;
+		}
+
+		if (!this.pinnedWidthFitsPage(renderedTable, colWidths)) {
 			return;
 		}
 

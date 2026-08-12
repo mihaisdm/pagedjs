@@ -203,6 +203,22 @@ function rebuildSplitTable(sourceTable, clonedTable) {
 	}
 }
 
+// Marks a row whose carried-over rowspan cells have already been filled in.
+//
+// The fill below rewrites the row in place — that is deliberate and load-bearing:
+// the walker walks the source, so a cell carried down from a rowspan has to be
+// in the source row to be rendered at all (upstream #239). But it must happen
+// only ONCE per row. Its guard compares the row against the *previous* row's
+// cell count, and a filled row can still have fewer cells than a row further
+// back, so a second call appends another copy of every cell carried down from
+// there — measured on a table with two rowspans of different lengths, a row
+// went ["c3"] -> ["A","c3"] -> ["A","A","c3"] -> ["A","A","A","c3"], one extra
+// duplicate per call. That makes laying the same content out twice unsafe, which
+// any retry or re-validation of a page does.
+//
+// A symbol rather than an attribute, so nothing leaks into the rendered output.
+const ROWSPAN_FILLED = Symbol("pagedjs-rowspan-filled");
+
 export function rebuildAncestors(node) {
 	let parent, ancestor;
 	let ancestors = [];
@@ -211,7 +227,8 @@ export function rebuildAncestors(node) {
 	let fragment = document.createDocumentFragment();
 
 	// Handle rowspan on table
-	if (node.nodeName === "TR") {
+	if (node.nodeName === "TR" && !node[ROWSPAN_FILLED]) {
+		node[ROWSPAN_FILLED] = true;
 		let previousRow = node.previousElementSibling;
 		let previousRowDistance = 1;
 		while (previousRow) {
@@ -672,18 +689,36 @@ export function hasTextContent(node) {
 	return false;
 }
 
+// Breaking inside a word appends a hyphen glyph to the text that stays behind
+// (see Layout.hyphenateAtBreak), so a rendered text node is then NOT a
+// substring of the source text it came from. Any later attempt to map that
+// rendered node back to its source — looking for a second break point on the
+// same page, or re-checking the page after layout — must ignore that inserted
+// glyph, or the lookup fails and no break token can be built at all.
+// U+2010 hyphen, U+2011 non-breaking hyphen, U+00AD soft hyphen, plain '-'.
+// Spelled with escapes: a literal soft hyphen here would be invisible.
+const INSERTED_HYPHEN_AT_END = /[\u2010\u2011\u00AD-]+$/;
+
+export function withoutInsertedHyphen(text) {
+	return typeof text === "string" ? text.replace(INSERTED_HYPHEN_AT_END, "") : text;
+}
+
 export function indexOfTextNode(node, parent) {
 	if (!isText(node)) {
 		return -1;
 	}
 	let nodeTextContent = node.textContent;
+	let dehyphenated = withoutInsertedHyphen(nodeTextContent);
 	let child;
 	let index = -1;
 	for (var i = 0; i < parent.childNodes.length; i++) {
 		child = parent.childNodes[i];
 		if (child.nodeType === 3) {
 			let text = parent.childNodes[i].textContent;
-			if (text.includes(nodeTextContent)) {
+			// Exact match first, so behaviour is unchanged wherever it already
+			// worked; the de-hyphenated match only widens the failing case.
+			if (text.includes(nodeTextContent) ||
+				(dehyphenated !== nodeTextContent && dehyphenated && text.includes(dehyphenated))) {
 				index = i;
 				break;
 			}

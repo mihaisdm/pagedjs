@@ -1,6 +1,26 @@
 import Layout from "./layout.js";
 import EventEmitter from "event-emitter";
 
+// How many times a page may be laid out again into a shorter box to keep content
+// out of the off-page column. A guard, not an expected count: one shrink is
+// normally enough, and a page that is already clean never shrinks at all.
+const MAX_OFFPAGE_SHRINKS = 3;
+
+// A copy of `bounds` with `amount` taken off the bottom. Plain object rather than
+// a DOMRect because the layout only reads these fields, and DOMRect is readonly.
+function shrinkBottom(bounds, amount) {
+	return {
+		left: bounds.left,
+		right: bounds.right,
+		top: bounds.top,
+		bottom: bounds.bottom - amount,
+		width: bounds.width,
+		height: bounds.height - amount,
+		x: bounds.left,
+		y: bounds.top
+	};
+}
+
 /**
  * Render a page
  * @class
@@ -139,12 +159,29 @@ class Page {
 		let newBreakToken;
 		let attempts = 0;
 
+		// Removing the overflow re-fragments the content that stays behind: this
+		// page is a multi-column container, so the column break can move up and
+		// push content into the off-page column, where it is dropped from the
+		// printed output entirely. The break was computed from the layout as it
+		// stood *before* the overflow was removed, so it is then wrong, and
+		// nothing else re-validates it.
+		//
+		// Rather than try to repair a page whose DOM has already been mutated —
+		// which means re-running break heuristics written for a fresh page, and
+		// mapping truncated (and possibly hyphenated) rendered text back to its
+		// source — lay the page out again into a slightly shorter box. The
+		// existing machinery then simply never places the offending line here,
+		// and the content it would have stranded flows to the next page as usual.
+		let attemptBounds;
+		let shrinks = 0;
+		let restored = false;
+
 		do {
 			if (attempts > 0) {
 				this.clear();
 			}
 
-			renderResult = await this.layoutMethod.renderTo(this.wrapper, contents, nextStartToken);
+			renderResult = await this.layoutMethod.renderTo(this.wrapper, contents, nextStartToken, attemptBounds);
 			newBreakToken = renderResult.breakToken;
 			attempts += 1;
 
@@ -156,8 +193,33 @@ class Page {
 				continue;
 			}
 
+			let bounds = attemptBounds || this.layoutMethod.bounds;
+			let offPage = this.layoutMethod.offPageColumnLines(this.wrapper, bounds);
+
+			if (!offPage.length) {
+				break;
+			}
+
+			// Take off at least a whole line box, or the retry cannot change which
+			// line is placed last.
+			if (shrinks < MAX_OFFPAGE_SHRINKS) {
+				attemptBounds = shrinkBottom(bounds, Math.max(1, Math.max.apply(null, offPage)));
+				shrinks += 1;
+				continue;
+			}
+
+			// Shrinking never cleared it, so this is content no box on this page can
+			// hold (something wider than the page, say). Lay it out once more at the
+			// original size, so the page is never paginated worse than it would have
+			// been without any of this.
+			if (attemptBounds && !restored) {
+				attemptBounds = undefined;
+				restored = true;
+				continue;
+			}
+
 			break;
-		} while (attempts < 5);
+		} while (attempts < 5 + MAX_OFFPAGE_SHRINKS + 1);
 
 		this.addListeners(contents);
 
