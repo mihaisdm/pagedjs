@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Split row list items</title>
+    <script src="../../../dist/paged.polyfill.js"></script>
+    <style>
+      @page { size: 100mm 52mm; margin: 4mm; }
+      table { table-layout: fixed; width: 100%; border-collapse: collapse;
+              font-size: 7.4pt; line-height: 1.15; }
+      th { text-align: left; }
+      td, th { vertical-align: top; padding: 0 1px; border: 1px solid #999; }
+      .c-name { width: 13mm; }
+      .c-formula { width: 15mm; }
+      .c-filter { width: 13mm; }
+      .c-label { width: 12mm; }
+      p { margin: 0 0 2px; }
+      ul { margin: 0; padding-left: 3mm; }
+      li { margin: 0; }
+    </style>
+  </head>
+  <body>
+    <!--
+      Same geometry as ../split-row-columns/split-row-columns.html (the "Description"
+      column is by far the tallest cell, forcing the page break inside it; the row's
+      later columns are appended forward and trimmed to what fits) but with the
+      "Activities" column holding a <ul> of short <li> items instead of <p>s, to
+      reproduce the exact real-world defect:
+
+      Real-world symptom (eoSearch Common Layout Reference Manual, "eoDR Formats"
+      table, "eoIP_SDR" row, PDF pages 7-8): five of the nine Activities <li> items
+      fit on the page the row starts on; the remaining four ("WAP;", "MMS;", "FTP;",
+      "EMAIL sent/received.") belong on the continuation page. What actually printed
+      there was five BARE, textless bullet points ahead of those four items -- one
+      bullet per already-shown <li>.
+
+      Cause: rebuildTableFromBreakToken's dropLeadingText zeroes the text of
+      however many characters were already shown (here, exactly five whole <li>s'
+      worth), then strips now-empty leading children of the CELL to avoid a blank
+      line before the continuation's first word. But the cell's only direct child
+      is the <ul> -- which is NOT empty (the last four <li>s still hold text) -- so
+      a single top-level pass never looks inside it and the five emptied <li>s are
+      left in the DOM as bare bullets.
+    -->
+    <div id="content">
+      <table>
+        <thead>
+          <tr>
+            <th class="c-name">Name</th>
+            <th>Description</th>
+            <th class="c-formula">Formula</th>
+            <th class="c-filter">Filter</th>
+            <th>Activities</th>
+            <th class="c-label">Label</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Pushes the row below down the page, so the break lands part way
+               into it and the row has somewhere it could move to. -->
+          <tr>
+            <td data-cell="lead-name">Lead</td>
+            <td data-cell="lead-desc"><p>Denotes the answered rate of the Mobile Calls originating.</p></td>
+            <td data-cell="lead-formula">count where ([Lead])</td>
+            <td data-cell="lead-filter">[Lead Attempt]</td>
+            <td data-cell="lead-activities"><ul><li>Network Attach;</li></ul></td>
+            <td data-cell="lead-label">Accessibility</td>
+          </tr>
+          <!-- The row under test. Its Description is by far the tallest cell, so
+               the page break falls inside it. Formula / Filter / Label are one or
+               two lines each and fit beside it; Activities is a <ul> tall enough
+               that only some of its <li>s fit. -->
+          <tr>
+            <td data-cell="split-name">Split</td>
+            <td data-cell="split-desc"><p>Denotes the answered rate of the Mobile Calls originating and terminating within the monitored network, calculated as the ratio between the number of answered call attempts and the total number of call attempts observed on the interface during the reporting period, which is configurable by the operator.</p><p>Calculated as: the number of answered call attempts divided by the total number of call attempts observed during the reporting period.</p></td>
+            <td data-cell="split-formula">1 - count where ([Success]) / Count</td>
+            <td data-cell="split-filter">[Mobile Call Attempt]</td>
+            <td data-cell="split-activities">
+              <ul>
+                <li>Create PDP Context/Session;</li>
+                <li>Delete PDP Context/session;</li>
+                <li>TCP;</li>
+                <li>UDP;</li>
+                <li>HTTP;</li>
+                <li>WAP;</li>
+                <li>MMS;</li>
+                <li>FTP;</li>
+                <li>EMAIL sent/received.</li>
+              </ul>
+            </td>
+            <td data-cell="split-label">Mobility</td>
+          </tr>
+          <tr>
+            <td data-cell="tail-name">Tail</td>
+            <td data-cell="tail-desc"><p>Denotes the failure rate of the Location Update procedure.</p></td>
+            <td data-cell="tail-formula">count where ([Reject])</td>
+            <td data-cell="tail-filter">[Update Attempt]</td>
+            <td data-cell="tail-activities"><ul><li>Other services.</li></ul></td>
+            <td data-cell="tail-label">Accessibility</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <script>
+      window.__SOURCE_TEXT__ = document.getElementById("content").textContent;
+      window.__SOURCE_CELLS__ = (function () {
+        var out = {};
+        var cells = document.querySelectorAll("#content [data-cell]");
+        for (var i = 0; i < cells.length; i++) {
+          out[cells[i].getAttribute("data-cell")] =
+            cells[i].textContent.replace(/\s+/g, " ").trim();
+        }
+        return out;
+      })();
+    </script>
+  </body>
+</html>

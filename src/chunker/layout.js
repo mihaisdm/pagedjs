@@ -524,8 +524,32 @@ class Layout {
 		tail.setStart(cutNode, cutOffset);
 		tail.setEndAfter(clone.lastChild);
 		tail.deleteContents();
+		// `Range.deleteContents()` only removes content; a boundary container that
+		// was only PARTIALLY selected (the <li> the cut landed in, when none of its
+		// own text made the cut) survives as an empty element -- a bare bullet with
+		// nothing beside it. Symmetric to dropLeadingText's leading-side cleanup.
+		this.removeEmptyTrailingChildren(clone);
 		// Nothing of it fitted after all: let the continuation render the cell whole.
 		return clone.textContent.length || 0;
+	}
+
+	removeEmptyTrailingChildren(element) {
+		let last;
+		while ((last = element.lastChild)) {
+			if (last.nodeType !== 1) {
+				if ((last.textContent || "").trim().length) { break; }
+				if (element.childNodes.length <= 1) { break; }
+				last.remove();
+				continue;
+			}
+			if (last.nodeName === "IMG" || (last.querySelector && last.querySelector("img"))) { break; }
+			if ((last.textContent || "").trim().length) {
+				this.removeEmptyTrailingChildren(last);
+				break;
+			}
+			if (element.childNodes.length <= 1) { break; }
+			last.remove();
+		}
 	}
 
 	// Remove the first `count` characters of text from a cell rendered on a continuation
@@ -546,11 +570,36 @@ class Layout {
 			}
 		}
 		// Blocks and <br>s emptied above would otherwise print as blank lines before the
-		// continuation's first word.
+		// continuation's first word. A <ul> whose first few <li>s were just emptied is
+		// NOT itself empty (later <li>s still hold text), so a single pass over
+		// `element`'s own children stops immediately and leaves bare, textless bullets
+		// sitting above the continuation -- descend into whichever child still has text
+		// and repeat there.
+		this.removeEmptyLeadingChildren(element);
+	}
+
+	removeEmptyLeadingChildren(element) {
 		let first;
-		while ((first = element.firstChild) &&
-			!(first.textContent || "").trim().length &&
-			element.childNodes.length > 1) {
+		while ((first = element.firstChild)) {
+			if (first.nodeType !== 1) {
+				if ((first.textContent || "").trim().length) { break; }
+				// Don't remove the only remaining node -- leaving nothing behind is
+				// worse than one stray empty text node.
+				if (element.childNodes.length <= 1) { break; }
+				first.remove();
+				continue;
+			}
+			if (first.nodeName === "IMG" || (first.querySelector && first.querySelector("img"))) { break; }
+			if ((first.textContent || "").trim().length) {
+				// `first` (e.g. a <ul>) is not itself empty overall -- its LATER
+				// children still hold text -- but its own leading children (e.g. the
+				// first few now-emptied <li>s) may need the same cleanup. Recurse
+				// into it rather than stopping here, which is what a same-level-only
+				// check on `element.childNodes.length` used to prevent.
+				this.removeEmptyLeadingChildren(first);
+				break;
+			}
+			if (element.childNodes.length <= 1) { break; }
 			first.remove();
 		}
 	}
