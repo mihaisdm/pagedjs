@@ -167,6 +167,16 @@ function stripIdentity(node) {
 	});
 }
 
+function tableHasRowspanCell(table) {
+	let cells = table.querySelectorAll("[rowspan]");
+	for (let i = 0; i < cells.length; i++) {
+		if (parseInt(cells[i].getAttribute("rowspan") || "1", 10) > 1) {
+			return true;
+		}
+	}
+	return false;
+}
+
 // Re-apply captured column widths and replicate the header onto a continuation
 // fragment of a split table. `sourceTable` is the original table node (which
 // carries the captured geometry), `clonedTable` is the shallow clone that will
@@ -200,6 +210,63 @@ function rebuildSplitTable(sourceTable, clonedTable) {
 		});
 		// colgroup must precede thead/tbody in the table.
 		clonedTable.insertBefore(colgroup, clonedTable.firstChild);
+		return;
+	}
+
+	// No captured widths -- the geometry capture declined this table (e.g. it has a
+	// row taller than the page, which must not be pinned). The source table may
+	// still carry its OWN <colgroup>, and under `table-layout: fixed` that colgroup
+	// is the only thing giving the columns their proportions: without it fixed
+	// layout divides the width EQUALLY between the columns. Since `clonedTable` is a
+	// shallow clone it has no colgroup, so every continuation fragment used to fall
+	// back to equal columns while the first fragment kept the source's proportions --
+	// the reported "only the first page's columns differ, the rest all match each
+	// other" (eoSearch Common Layout p7->8, eoLive Dataviews Catalog p15->16; the
+	// proportions come from print-bootstrap.js's applyAdaptiveColgroup).
+	//
+	// Copying it is not the same thing as pinning, and does not carry pinning's
+	// risk: these are the source's own PERCENTAGE widths, so they resolve against
+	// whatever width the fragment has and cannot push content off the page, whereas
+	// pinning writes measured pixel widths plus `max-width: none` and can (measured:
+	// self-monitoring-alarm, a 4252px table on a 665px page).
+	// Mirror the width-capture path's rowspan gate. A rowspan cell carrying across
+	// the break leaves the continuation's rows with fewer cells than the table has
+	// columns, so a colgroup lines those cells up against columns they no longer
+	// correspond to -- verified to mangle the layout when the width-pinning feature
+	// was built, which is why captureSplitTableGeometry refuses these tables too. No
+	// fixture in this suite combines rowspan WITH a colgroup, so the combination is
+	// untested here; leave it as it was rather than guess.
+	if (tableHasRowspanCell(sourceTable)) {
+		return;
+	}
+
+	let sourceColgroups = [];
+	for (let child = sourceTable.firstElementChild; child; child = child.nextElementSibling) {
+		if (child.nodeName === "COLGROUP") {
+			sourceColgroups.push(child);
+		}
+	}
+	// Insert each in front, back to front, so the original order is preserved and
+	// they all end up before the thead appended above.
+	for (let i = sourceColgroups.length - 1; i >= 0; i--) {
+		let colgroupClone = sourceColgroups[i].cloneNode(true);
+		// Without this the copy carries the source's data-ref and collides with the
+		// data-ref lookups used to match fragments across pages.
+		stripIdentity(colgroupClone);
+		// Marks it as replicated decoration so the overflow/break machinery ignores
+		// it -- it carries no data-ref and must never be chosen as a break point.
+		//
+		// Deliberately NOT `data-split-table-colgroup`, which means "these columns are
+		// PINNED to captured pixel widths": the Splits handler reads that marker to
+		// decide a fragment's geometry can no longer drift and skips the column freeze
+		// (see onOverflow). That is true of pinned widths, and true of a copied
+		// colgroup under `table-layout: fixed` where the colgroup is authoritative --
+		// but NOT under `table-layout: auto`, where colgroup widths are only hints and
+		// content can still redistribute them when the overflow is removed. That is
+		// exactly the case the freeze exists for (the eoLTE "S1 - PDN" loss). Copying
+		// a colgroup must not silently disable it, so it gets its own marker.
+		colgroupClone.dataset.splitTableSourceColgroup = "true";
+		clonedTable.insertBefore(colgroupClone, clonedTable.firstChild);
 	}
 }
 

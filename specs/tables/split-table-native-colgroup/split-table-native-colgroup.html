@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Split table native colgroup</title>
+    <script src="../../../dist/paged.polyfill.js"></script>
+    <style>
+      @page { size: 120mm 60mm; margin: 4mm; }
+      /* table-layout:fixed is what makes the colgroup load-bearing: without a
+         colgroup, fixed layout divides the width EQUALLY between the columns
+         instead of using the authored proportions. */
+      table { table-layout: fixed; width: 100%; border-collapse: collapse;
+              font-size: 7.2pt; line-height: 1.15; }
+      th { text-align: left; }
+      td, th { vertical-align: top; padding: 0 1px; border: 1px solid #999; }
+      p { margin: 0 0 2px; }
+    </style>
+  </head>
+  <body>
+    <!--
+      Reported against eoSearch Common Layout Reference Manual (p7 -> p8) and
+      eoLive Dataviews Catalog Operator Manual (p15 -> p16), same shape in both:
+      the table's FIRST page had proportional columns and every continuation page
+      had equal-width columns -- so page 1 looked different from pages 2..n, while
+      pages 2..n all agreed with each other.
+
+      Cause: the source table carries its own <colgroup> (in the real manuals it is
+      inserted by portal-pdftools' print-bootstrap.js applyAdaptiveColgroup, which
+      weights each column by its content). A continuation fragment is built from a
+      SHALLOW clone of the table, so it had no colgroup at all -- and under
+      table-layout:fixed a table with no colgroup falls back to equal columns.
+      That fallback is deterministic, which is why every continuation matched every
+      other continuation and only the first page stood out.
+
+      This is deliberately NOT the pinning path (SPLIT_TABLE_COL_WIDTHS): these are
+      the source's own percentage widths, which cannot overflow the page.
+
+      NOTE the page-taller row below, and do not remove it: it is what makes this
+      fixture reproduce at all. When a table has no row taller than the page,
+      captureSplitTableGeometry PINS the columns, and the pinned colgroup gives the
+      continuations the right widths by a completely different route -- masking this
+      bug entirely. Both reported manuals contain such a row (eoSearch: eoLTE/eoMTC
+      with nested sub-lists; eoLive: several long KPI descriptions), which is why
+      pinning was refused there and the missing native colgroup became visible.
+      A first version of this fixture without a tall row passed on the broken code.
+    -->
+    <div id="content">
+      <table>
+        <colgroup>
+          <col style="width: 10%" />
+          <col style="width: 45%" />
+          <col style="width: 30%" />
+          <col style="width: 15%" />
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Description</th>
+            <th>Filter</th>
+            <th>Label</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <script>
+      // Enough rows that the table runs over several pages, so there are multiple
+      // continuation fragments to compare against the first one.
+      var tbody = document.getElementById("rows");
+      var TALL_ROW = 8;
+      for (var r = 1; r <= 22; r++) {
+        var tr = document.createElement("tr");
+        var cell = function (text) {
+          var td = document.createElement("td");
+          td.textContent = text;
+          tr.appendChild(td);
+        };
+        cell("KPI " + r);
+        if (r === TALL_ROW) {
+          // Comfortably taller than the page content area, so the geometry capture
+          // refuses to pin this table (see the note above) and the continuations
+          // depend on the source colgroup being copied.
+          var words = [];
+          for (var k = 1; k <= 700; k++) { words.push("d" + r + "w" + k); }
+          cell(words.join(" "));
+        } else {
+          cell("Denotes the answered rate of the Mobile Calls originating and " +
+               "terminating within the monitored network for sample " + r + ".");
+        }
+        cell("[Data Record Type] inlist (1, 12) and [Attempt " + r + "]");
+        cell("Accessibility");
+        tbody.appendChild(tr);
+      }
+      window.__SOURCE_TEXT__ = document.getElementById("content").textContent;
+    </script>
+  </body>
+</html>

@@ -38,17 +38,17 @@ const MAX_CHARS_PER_BREAK = 1500;
 const MAX_ORPHANED_TABLE_ROWS = 3;
 
 // Detects nodes injected when rebuilding a split table continuation: the
-// synthetic <colgroup> used to pin column widths and the replicated header.
-// Both are marked with dedicated data attributes and exist only for
-// presentation (their clones carry no data-ref), so the overflow/break
-// machinery must ignore them. Scoped to the markers we add so native
-// colgroups/headers in ordinary tables are unaffected.
+// synthetic <colgroup> used to pin column widths, a copy of the source table's
+// own <colgroup>, and the replicated header. All are marked with dedicated data
+// attributes and exist only for presentation (their clones carry no data-ref),
+// so the overflow/break machinery must ignore them. Scoped to the markers we add
+// so native colgroups/headers in ordinary tables are unaffected.
 function isReplicatedTableDecoration(node) {
 	let element = node.nodeType === 1 ? node : node.parentElement;
 	if (!element || typeof element.closest !== "function") {
 		return false;
 	}
-	return element.closest("[data-split-table-colgroup], [data-split-table-header]") !== null;
+	return element.closest("[data-split-table-colgroup], [data-split-table-source-colgroup], [data-split-table-header]") !== null;
 }
 
 function describeNodeForDebug(node) {
