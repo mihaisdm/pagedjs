@@ -120,3 +120,88 @@ describe("Layout.rowCanMoveToNextPage", () => {
 		expect(canMove(orphan)).toBe(false);
 	});
 });
+
+// A break token names where the *next* page resumes, so it must always sit
+// after the token the current page started from. One that does not means the
+// overflow was resolved against a node that stands for content already
+// rendered — which is what happens when a continuation table's <tbody> is
+// resolved back through its data-ref to the source tbody, i.e. to the table's
+// first row. Layout then replays the table until the chunker aborts the
+// document with "Layout repeated" (portal-pdftools
+// operate/self-monitoring-3-alert-list). The predicate is the trigger for
+// re-measuring the page without the page area's columns; getting it wrong
+// either leaves that bug unfixed or re-measures pages that are laid out fine.
+describe("Layout.breakTokenRewinds", () => {
+
+	const rewinds = (breakToken, prevBreakToken) =>
+		Layout.prototype.breakTokenRewinds.call(null, breakToken, prevBreakToken);
+
+	const fixture = () => {
+		const host = document.createElement("div");
+		host.innerHTML = `<table><tbody id="body">
+			<tr id="first"><td id="firstCell">alpha</td></tr>
+			<tr id="second"><td id="secondCell">omega</td></tr>
+		</tbody></table>`;
+		return host;
+	};
+
+	it("accepts a token that follows the previous one in document order", () => {
+		const host = fixture();
+
+		expect(rewinds(
+			{node: host.querySelector("#secondCell").firstChild, offset: 0},
+			{node: host.querySelector("#firstCell").firstChild, offset: 0})).toBe(false);
+	});
+
+	it("accepts a later offset in the same node", () => {
+		const text = fixture().querySelector("#firstCell").firstChild;
+
+		expect(rewinds({node: text, offset: 3}, {node: text, offset: 1})).toBe(false);
+	});
+
+	// No progress at all: the page would start exactly where the last one did.
+	it("rejects the same node at the same or an earlier offset", () => {
+		const text = fixture().querySelector("#firstCell").firstChild;
+
+		expect(rewinds({node: text, offset: 1}, {node: text, offset: 1})).toBe(true);
+		expect(rewinds({node: text, offset: 0}, {node: text, offset: 4})).toBe(true);
+	});
+
+	it("rejects a token that precedes the previous one", () => {
+		const host = fixture();
+
+		expect(rewinds(
+			{node: host.querySelector("#firstCell").firstChild, offset: 0},
+			{node: host.querySelector("#secondCell").firstChild, offset: 0})).toBe(true);
+	});
+
+	// The bug this exists for. A container token resumes at the container's
+	// start, so an ancestor of the previous break point re-renders everything
+	// between the two — here, every row of the table.
+	it("rejects an ancestor of the previous break point", () => {
+		const host = fixture();
+
+		expect(rewinds(
+			{node: host.querySelector("#body"), offset: 0},
+			{node: host.querySelector("#secondCell").firstChild, offset: 0})).toBe(true);
+	});
+
+	// A descendant does follow the previous break point: the page stopped at the
+	// container and resumes deeper inside it.
+	it("accepts a descendant of the previous break point", () => {
+		const host = fixture();
+
+		expect(rewinds(
+			{node: host.querySelector("#secondCell").firstChild, offset: 0},
+			{node: host.querySelector("#body"), offset: 0})).toBe(false);
+	});
+
+	it("has no opinion when either token is missing a node", () => {
+		const text = fixture().querySelector("#firstCell").firstChild;
+
+		expect(rewinds(undefined, {node: text, offset: 0})).toBe(false);
+		expect(rewinds({node: text, offset: 0}, undefined)).toBe(false);
+		expect(rewinds({offset: 0}, {node: text, offset: 0})).toBe(false);
+		expect(rewinds({node: text, offset: 0}, {offset: 0})).toBe(false);
+	});
+});
