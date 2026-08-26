@@ -1108,6 +1108,58 @@ class Layout {
 
 	}
 
+	// True when resuming from `breakToken` would re-render content that
+	// `prevBreakToken` already placed: its node is the same one with an earlier
+	// (or equal) offset, precedes it in document order, or contains it — a
+	// container break token resumes at the container's start, so an ancestor of
+	// the previous break point is a rewind too.
+	breakTokenRewinds(breakToken, prevBreakToken) {
+		if (!breakToken || !breakToken.node || !prevBreakToken || !prevBreakToken.node) {
+			return false;
+		}
+		if (breakToken.node === prevBreakToken.node) {
+			return (breakToken.offset || 0) <= (prevBreakToken.offset || 0);
+		}
+		let position = prevBreakToken.node.compareDocumentPosition(breakToken.node);
+		if (position & Node.DOCUMENT_POSITION_CONTAINS) {
+			return true;
+		}
+		return !(position & Node.DOCUMENT_POSITION_FOLLOWING);
+	}
+
+	// Overflow as the page area would see it if it were a single column: the
+	// area is a multi-column container (`column-width` is set to the content
+	// width in `Page.create`, which is what puts overflowing content in the
+	// off-page column), and dropping that lets the browser lay the content out
+	// in document order down the page instead of moving a box that does not fit
+	// sideways. Only the measurement changes — the columns are put back before
+	// anything is removed.
+	findOverflowWithoutColumns(rendered, bounds = this.bounds) {
+		let area = rendered && rendered.parentNode;
+		if (!area || !isElement(area)) {
+			return;
+		}
+		let columnWidth = area.style.columnWidth;
+		let columnCount = area.style.columnCount;
+		// The wrapper inherits the area's height, so without this the content
+		// would overflow a box that still measures exactly one page: `hasOverflow`
+		// looks at the wrapper's own height and the area's scroll extent, and both
+		// would report no overflow at all once it is no longer flowing sideways.
+		let height = rendered.style.height;
+		area.style.columnWidth = "auto";
+		area.style.columnCount = "auto";
+		rendered.style.height = "auto";
+		this.detectStraddlingOverflow = true;
+		try {
+			return this.findOverflow(rendered, bounds);
+		} finally {
+			this.detectStraddlingOverflow = false;
+			area.style.columnWidth = columnWidth;
+			area.style.columnCount = columnCount;
+			rendered.style.height = height;
+		}
+	}
+
 	findBreakToken(rendered, source, bounds = this.bounds, prevBreakToken, extract = true, fallbackNode) {
 		let overflow = this.findOverflow(rendered, bounds);
 		let breakToken, breakLetter, fallbackBreakToken;
@@ -1121,6 +1173,42 @@ class Layout {
 
 		if (overflow) {
 			breakToken = this.createBreakToken(overflow, rendered, source);
+
+			// A break token that does not advance past the one this page started
+			// from means the page area's column layout moved content the page had
+			// already begun rendering, not that the content genuinely belongs to
+			// the next page.
+			//
+			// It happens to the tail fragment of a row that spans several pages.
+			// The fragment is shorter than the page content box but taller than
+			// what is left of it under the replicated header, so Chromium pushes
+			// the whole row into an off-page column instead of fragmenting it in
+			// place — pushing is only refused for a box that would not fit an
+			// empty fragmentainer either. The overflow walk then meets the
+			// continuation `tbody` before any of its text, and `createBreakToken`
+			// resolves it through `data-ref` to the *source* tbody, i.e. to the
+			// first row of the whole table. Layout rewinds there, replays every
+			// page of the table, and the chunker stops the document with "Layout
+			// repeated" (self-monitoring-3-alert-list, a 60-row table whose tail
+			// fragment came out 890.83px against 888.89px of room).
+			//
+			// Re-measure with the column fragmentation switched off. The row then
+			// sits where the page means it to — directly under the header — and
+			// overflows the content box downwards, so the ordinary text-level
+			// break search finds the line to break at. The break is a node and an
+			// offset, so it stays valid once the columns are restored, and
+			// removing that tail leaves a row that does fit.
+			if (this.breakTokenRewinds(breakToken, prevBreakToken)) {
+				let unpushed = this.findOverflowWithoutColumns(rendered, bounds);
+				if (unpushed) {
+					let unpushedToken = this.createBreakToken(unpushed, rendered, source);
+					if (unpushedToken && !this.breakTokenRewinds(unpushedToken, prevBreakToken)) {
+						overflow = unpushed;
+						breakToken = unpushedToken;
+					}
+				}
+			}
+
 			// breakToken is nullable
 			let breakHooks = this.hooks.onBreakToken.triggerSync(breakToken, overflow, rendered, this);
 			breakHooks.forEach((newToken) => {
@@ -1380,6 +1468,7 @@ class Layout {
 
 					let rects = getClientRects(node);
 					let rect;
+					let bottom = 0;
 					left = 0;
 					top = 0;
 					for (var i = 0; i != rects.length; i++) {
@@ -1390,9 +1479,27 @@ class Layout {
 						if (rect.height > 0 && (!top || rect.top > top)) {
 							top = rect.top;
 						}
+						if (rect.height > 0 && rect.bottom > bottom) {
+							bottom = rect.bottom;
+						}
 					}
 
-					if (left >= end || top >= vEnd) {
+					// `top >= vEnd` cannot see a line that merely *straddles* the bottom
+					// of the content box: its top is still inside. In the page's own
+					// column layout that never matters, because a column never lets a
+					// line straddle its end — the line is moved to the next column
+					// whole, where `left >= end` catches it. It matters only while
+					// `findOverflowWithoutColumns` is measuring with the columns off,
+					// which is the one case where a straddling line is what we are
+					// looking for. `textBreak` already breaks at the first word of such
+					// a line.
+					//
+					// The flag must stay off everywhere else. Switched on for ordinary
+					// layout it would move any line whose last fraction of a pixel
+					// crosses the bound to the next page, repaginating every document
+					// that has one.
+					if (left >= end || top >= vEnd ||
+						(this.detectStraddlingOverflow && bottom > vEnd)) {
 						// A table starting near the page bottom overflows at the text
 						// level (its header / first-row text exceeds the bound) before
 						// any element boundary does, so the element-level orphan check
