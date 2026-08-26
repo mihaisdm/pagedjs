@@ -5,9 +5,13 @@ import terser from "@rollup/plugin-terser";
 import license from "rollup-plugin-license";
 import { execSync } from "child_process";
 
-import pkg from "./package.json" assert {
-  type: 'json'
-};
+// Read via createRequire rather than an import attribute: the syntax for those
+// changed (`assert` -> `with`) and Node 24 rejects the old spelling outright, so
+// a config using either one only builds on some versions of Node. This spelling
+// works on all of them.
+import { createRequire } from "module";
+
+const pkg = createRequire(import.meta.url)("./package.json");
 
 // Which commit this build came from.
 //
