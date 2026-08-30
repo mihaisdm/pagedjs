@@ -1,0 +1,20 @@
+# Toolchain for this repository. `mise install` in the repo root provisions it.
+#
+# node   AGENTS.md pins the fork's builds to Node 16: rollup output is
+#        byte-deterministic per Node version, so md5sum of dist/paged.js only
+#        identifies a commit while the version is held fixed.
+
+[tools]
+node = "16"
+
+[tasks.build]
+description = "Build dist/ with the pinned Node"
+run = "npm run build"
+
+[tasks.spec]
+description = "Run one spec in the container, as CI does"
+run = """
+docker build -t pagedmedia/pagedjs:test .
+docker run --rm --ipc=host -e CI=true pagedmedia/pagedjs:test \
+  bash -lc "npm run pretest >/dev/null 2>&1 && npx jest --config=specs/jest.config.js --runInBand $SPEC"
+"""
