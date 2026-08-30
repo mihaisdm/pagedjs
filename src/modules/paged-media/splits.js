@@ -26,11 +26,13 @@ class Splits extends Handler {
 		let from; // Capture the last from element
 		splits.forEach((split) => {
 			let ref = split.dataset.ref;
-			from = prevPage.querySelector("[data-ref='"+ ref +"']:not([data-split-to])");
+			// The marker itself is applied while the previous page is being laid out
+			// (Layout.markContinuedFragments), so it is already present here. Match
+			// on it rather than on its absence, and do not re-apply it: restyling a
+			// finished page is what this moved away from.
+			from = prevPage.querySelector("[data-ref='"+ ref +"']");
 
 			if (from) {
-				from.dataset.splitTo = ref;
-
 				if (!from.dataset.splitFrom) {
 					from.dataset.splitOriginal = true;
 					let table = from.nodeName === "TABLE" ? from : from.closest("table");

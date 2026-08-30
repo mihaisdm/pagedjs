@@ -1,0 +1,1148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Nested list off-page column</title>
+<!--
+	Reduced from a Material for MkDocs manual rendered through this library: the
+	"grids" reference page, whose content-tab set holds a three-item <ul> and a
+	three-item <ol>. Six copies of that block, each preceded by a different amount
+	of filler so page boundaries land at varying points inside them.
+
+	The stylesheets are the real ones (the print stylesheet the manual was rendered
+	with, and the rules Material puts on this markup) because the bug did not survive a hand-written
+	approximation: a bare block-flow version of the same DOM paginates cleanly, and
+	trimming the CSS further changes where the breaks fall rather than whether the
+	item is lost. Metrics decide whether a boundary lands inside the list at all.
+
+	Expected: every list item renders inside some page's content box.
+	Actual:   the second group's items are laid out in the off-page second column
+	          of page 1 and never appear again -- present in the DOM, absent from
+	          the PDF, because Chromium culls fully clipped glyphs.
+-->
+
+<script src="../../../dist/paged.polyfill.js"></script>
+<style>
+/* Source Sans 3 — STATIC weight instances, no CDN dependency.
+   These MUST be static (single weight, no fvar/gvar axes): Chromium's headless
+   page.pdf() silently fails to embed/subset VARIABLE woff2 fonts, so a variable
+   font loads & renders on screen but is dropped from the PDF — the text then falls
+   back to a system font (e.g. WenQuanYi/DejaVu on Linux), making the PDF look wrong.
+   Instanced from the Source Sans 3 variable font (full glyph coverage incl. arrows
+   → ∞ ▶ ◀ ▼) at the weights actually used by the print stylesheet (400/700/800).
+   font-display:block makes the headless browser wait for the binary before layout. */
+
+
+
+
+
+
+/* Source Code Pro — the monospace member of the same family, on the same terms as
+   above (static instances, autohinted, no CDN). It is chosen over any other mono face
+   because its x-height (486) and cap height (660) are identical to Source Sans 3's, so
+   inline code sits in running text at the same size with no optical correction. A face
+   drawn for screens — JetBrains Mono's x-height is 13% larger — reads oversized and
+   heavier than the prose around it on paper.
+   Weights match what real corpora actually pull: syntax highlighting uses regular,
+   bold and italic, which is what the Docusaurus and Playwright benchmark exports
+   embedded before this existed. */
+
+
+
+
+@page {
+  size: A4;
+  margin: 16mm 16mm 18mm 18mm;
+
+  @top-left {
+    content: "";
+  }
+
+  @top-center {
+    content: "";
+  }
+
+  @top-right {
+    content: string(print-chapter-title);
+    font: 9pt/1.2 "Source Sans 3", Calibri, "Helvetica Neue", Arial, sans-serif;
+    color: #8b95a7;
+  }
+
+  @bottom-center {
+    content: "Page " counter(page) " of " counter(pages);
+    font: 10pt/1.2 "Source Sans 3", Calibri, "Helvetica Neue", Arial, sans-serif;
+    color: #8b95a7;
+  }
+
+}
+
+@page:first {
+  @top-left {
+    content: none;
+    background: none;
+    border-bottom: none;
+  }
+
+  @top-center {
+    content: none;
+    border-bottom: none;
+  }
+
+  @top-right {
+    content: none;
+    border-bottom: none;
+  }
+
+  @bottom-center {
+    content: none;
+  }
+}
+
+@page print-landscape-a4 {
+  size: A4 landscape;
+  margin: 16mm 16mm 18mm 18mm;
+
+  @top-left {
+    content: "";
+  }
+
+  @top-center {
+    content: "";
+  }
+
+  @top-right {
+    content: string(print-chapter-title);
+    font: 9pt/1.2 "Source Sans 3", Calibri, "Helvetica Neue", Arial, sans-serif;
+    color: #8b95a7;
+  }
+
+  @bottom-center {
+    content: "Page " counter(page) " of " counter(pages);
+    font: 10pt/1.2 "Source Sans 3", Calibri, "Helvetica Neue", Arial, sans-serif;
+    color: #8b95a7;
+  }
+
+}
+
+@page print-landscape-a3 {
+  size: A3 landscape;
+  margin: 16mm 16mm 18mm 18mm;
+
+  @top-left {
+    content: "";
+  }
+
+  @top-center {
+    content: "";
+  }
+
+  @top-right {
+    content: string(print-chapter-title);
+    font: 9pt/1.2 "Source Sans 3", Calibri, "Helvetica Neue", Arial, sans-serif;
+    color: #8b95a7;
+  }
+
+  @bottom-center {
+    content: "Page " counter(page) " of " counter(pages);
+    font: 10pt/1.2 "Source Sans 3", Calibri, "Helvetica Neue", Arial, sans-serif;
+    color: #8b95a7;
+  }
+
+}
+
+/* The Brand Profile's accent, restated per manual by PrintHtmlGenerator. It reaches only the
+   top-level chapter titles and the contents table's own top level; everything else is ink. The
+   contents table separates its levels typographically, so the accent is a second cue there and
+   never the one carrying the hierarchy -- which is what keeps the uncolored ink theme, and any
+   greyscale print of the others, readable. The value here is the ink theme's, so a
+   stylesheet used without the generator still renders; the generator overrides it on the root
+   element rather than with a rule of its own, because Paged.js re-injects this file after the
+   page's own <style> and a competing `:root` rule here would win. */
+:root {
+  --manual-accent: #111827;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #e7edf3;
+  color: #111827;
+}
+
+.export-status {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid #d1d5db;
+  background: #f8fafc;
+  color: #334155;
+  font: 600 13px/1.4 Arial, sans-serif;
+}
+
+body[data-print-ready="true"] .export-status {
+  display: none;
+}
+
+body[data-print-ready="error"] .export-status {
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.export-source {
+  position: absolute;
+  left: -200vw;
+  top: 0;
+  width: 210mm;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.export-scratch {
+  position: fixed;
+  inset: 0 auto auto 0;
+  width: 210mm;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: -1;
+}
+
+.export-preview {
+  min-height: 100vh;
+  padding: 0.75rem 0;
+}
+
+body[data-print-ready="false"] .export-preview::before {
+  content: "Paginating manual...";
+  display: block;
+  padding: 0.75rem 1rem;
+  font: 600 14px/1.4 Arial, sans-serif;
+  color: #4b5563;
+}
+
+.export-source .print-manual,
+.print-output {
+  color: #111827;
+  font-family: "Source Sans 3", Calibri, "Helvetica Neue", Arial, sans-serif;
+  font-size: 11pt;
+  line-height: 1.35;
+  /* Prevent OpenType ligature substitution (fi, ti, etc.) so PDF text extraction
+     tools get correct Unicode rather than unmapped ligature glyphs. */
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "clig" 0, "dlig" 0, "calt" 0;
+}
+
+.export-source .print-manual h1,
+.print-output h1 {
+  font-family: "Source Sans 3", Calibri, "Helvetica Neue", Arial, sans-serif;
+  font-weight: 700;
+  line-height: 1.12;
+  break-after: avoid-page;
+  page-break-after: avoid;
+}
+
+.export-source .print-manual h2,
+.export-source .print-manual h3,
+.export-source .print-manual h4,
+.export-source .print-manual h5,
+.export-source .print-manual h6,
+.print-output h2,
+.print-output h3,
+.print-output h4,
+.print-output h5,
+.print-output h6 {
+  font-family: "Source Sans 3", Calibri, "Helvetica Neue", Arial, sans-serif;
+  font-weight: 700;
+  line-height: 1.12;
+}
+
+/* Docusaurus admonition headings (NOTE/WARNING/custom titles) ship their own
+   system-ui font stack via a CSS-module class (admonitionHeading_<hash>), which
+   overrides the inherited print font and resolves to a system font (DejaVu on
+   Linux) in the headless PDF. Re-assert Source Sans 3 so they match body text.
+   Matched by class substring because the module hash changes between builds. */
+.export-source .print-manual [class*="admonitionHeading"],
+.print-output [class*="admonitionHeading"] {
+  font-family: "Source Sans 3", Calibri, "Helvetica Neue", Arial, sans-serif;
+}
+
+.export-source .print-manual h1,
+.print-output h1 {
+  color: #111827;
+  font-size: 27pt;
+  margin-top: 0;
+  margin-bottom: 0.45rem;
+}
+
+h1.print-chapter-title--top-level {
+  color: var(--manual-accent) !important;
+}
+
+h1.print-chapter-title--nested {
+  color: #111827;
+  font-size: 21pt;
+}
+
+.export-source .print-manual h2,
+.print-output h2 {
+  color: #111827;
+  font-size: 21pt;
+  margin-top: 1.35rem;
+  margin-bottom: 0.4rem;
+}
+
+.export-source .print-manual h3,
+.export-source .print-manual h4,
+.print-output h3,
+.print-output h4 {
+  color: #111827;
+  font-size: 14pt;
+  margin-top: 1rem;
+  margin-bottom: 0.35rem;
+}
+
+.export-source .print-manual h5,
+.export-source .print-manual h6,
+.print-output h5,
+.print-output h6 {
+  color: #111827;
+  font-size: 12pt;
+  margin-top: 0.8rem;
+  margin-bottom: 0.25rem;
+}
+
+.export-source .print-manual p,
+.export-source .print-manual li,
+.export-source .print-manual td,
+.export-source .print-manual th,
+.print-output p,
+.print-output li,
+.print-output td,
+.print-output th {
+  font-size: 11pt;
+}
+
+.export-source .print-manual a,
+.print-output a {
+  color: #2f6eb5;
+  text-decoration: none;
+}
+
+.export-source .print-manual .print-media-fallback,
+.print-output .print-media-fallback {
+  margin: 0.8rem 0 1rem;
+  padding: 0.7rem 0.9rem;
+  border-left: 3px solid #7d91a8;
+  background: #f2f5f8;
+  color: #435266;
+  break-inside: avoid;
+}
+
+.export-source .print-manual img,
+.print-output img {
+  max-width: 100%;
+  max-height: 250mm;
+  width: auto;
+  height: auto;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* Docusaurus uses this utility for single-line web previews such as generated-index cards.
+   Ellipsis is useful in a fixed-height browser card but silently removes authored text from a
+   manual. Restore ordinary wrapping before pagination so the complete description is printed. */
+.export-source .print-manual .text--truncate,
+.print-output .text--truncate {
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+}
+
+.export-source .print-manual table,
+.print-output table {
+  display: table;
+  width: 100%;
+  overflow: visible;
+  border-collapse: collapse;
+  margin: 0.8rem 0 1rem;
+  font-size: 9.8pt;
+  line-height: 1.22;
+  table-layout: auto;
+}
+
+/* Do NOT add `break-inside: avoid` here. It would fix the staggered-columns defect
+   (a break inside a cell strands every later cell of the row on the next page) by
+   switching on paged.js's move-the-whole-row branch — and that branch loses content:
+   measured, manual F drops the entire table row (~4200 chars)
+   and duplicates a page, and manual A loses ~4100. Upstream defect, not
+   ours; disabling the fork's whole re-validation loop changes nothing. See
+   docs/offpage-column-content-loss.md §13. */
+.export-source .print-manual th,
+.export-source .print-manual td,
+.print-output th,
+.print-output td {
+  border: 1px solid #b8c0ca;
+  padding: 0.24rem 0.34rem;
+  vertical-align: top;
+}
+
+.export-source .print-manual th,
+.print-output th {
+  background: #dfe6ee;
+  color: #111827;
+  border-bottom: 2px solid #9aa6b4;
+  font-weight: 700;
+  text-align: left;
+}
+
+.export-source .print-manual td > p:first-child,
+.export-source .print-manual th > p:first-child,
+.print-output td > p:first-child,
+.print-output th > p:first-child {
+  margin-top: 0;
+}
+
+.export-source .print-manual td > p:last-child,
+.export-source .print-manual th > p:last-child,
+.print-output td > p:last-child,
+.print-output th > p:last-child {
+  margin-bottom: 0;
+}
+
+.export-source .print-manual td ul,
+.export-source .print-manual td ol,
+.print-output td ul,
+.print-output td ol {
+  margin: 0.1rem 0 0.05rem;
+  padding-left: 0.95rem;
+}
+
+.export-source .print-manual td li,
+.export-source .print-manual td li + li,
+.print-output td li,
+.print-output td li + li {
+  margin-top: 0.04rem;
+}
+
+.export-source .print-manual table.print-table--schema,
+.print-output table.print-table--schema {
+  table-layout: fixed;
+  font-size: 9.1pt;
+  line-height: 1.15;
+  border: 1px solid #9ca3af;
+}
+
+.export-source .print-manual table.print-table--schema th,
+.export-source .print-manual table.print-table--schema td,
+.print-output table.print-table--schema th,
+.print-output table.print-table--schema td {
+  padding: 0.14rem 0.24rem;
+  border-color: #aeb6c1;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+
+.export-source .print-manual table.print-table--schema th,
+.print-output table.print-table--schema th {
+  background: #dfe6ee;
+  color: #111827;
+  border-bottom: 2px solid #9aa6b4;
+  font-size: 8.9pt;
+  line-height: 1.02;
+}
+
+.export-source .print-manual table.print-table--schema td,
+.print-output table.print-table--schema td {
+  background: #ffffff;
+}
+
+.export-source .print-manual table.print-table--schema th:nth-child(1),
+.export-source .print-manual table.print-table--schema td:nth-child(1),
+.print-output table.print-table--schema th:nth-child(1),
+.print-output table.print-table--schema td:nth-child(1) {
+  width: 31%;
+}
+
+.export-source .print-manual table.print-table--schema th:nth-child(2),
+.export-source .print-manual table.print-table--schema td:nth-child(2),
+.print-output table.print-table--schema th:nth-child(2),
+.print-output table.print-table--schema td:nth-child(2) {
+  width: 11%;
+}
+
+.export-source .print-manual table.print-table--schema th:nth-child(3),
+.export-source .print-manual table.print-table--schema td:nth-child(3),
+.print-output table.print-table--schema th:nth-child(3),
+.print-output table.print-table--schema td:nth-child(3) {
+  width: 10%;
+  text-align: center;
+}
+
+.export-source .print-manual table.print-table--schema th:nth-child(4),
+.export-source .print-manual table.print-table--schema td:nth-child(4),
+.print-output table.print-table--schema th:nth-child(4),
+.print-output table.print-table--schema td:nth-child(4) {
+  width: 42%;
+}
+
+.export-source .print-manual table.print-table--schema th:nth-child(5),
+.export-source .print-manual table.print-table--schema td:nth-child(5),
+.print-output table.print-table--schema th:nth-child(5),
+.print-output table.print-table--schema td:nth-child(5) {
+  width: 8%;
+}
+
+.export-source .print-manual table.print-table--schema td ul,
+.export-source .print-manual table.print-table--schema td ol,
+.print-output table.print-table--schema td ul,
+.print-output table.print-table--schema td ol {
+  margin: 0;
+  padding-left: 0.9rem;
+}
+
+.export-source .print-manual table.print-table--schema td li,
+.print-output table.print-table--schema td li {
+  line-height: 1.04;
+  margin-top: 0;
+}
+
+.export-source .print-manual table.print-table--wide,
+.print-output table.print-table--wide {
+  table-layout: fixed;
+  width: 100%;
+  max-width: 100%;
+  font-size: 8.6pt;
+  line-height: 1.12;
+}
+
+.export-source .print-manual table.print-table--wide th,
+.export-source .print-manual table.print-table--wide td,
+.print-output table.print-table--wide th,
+.print-output table.print-table--wide td {
+  padding: 0.16rem 0.22rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+.export-source .print-manual table.print-table--wide a,
+.export-source .print-manual table.print-table--wide code,
+.print-output table.print-table--wide a,
+.print-output table.print-table--wide code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.export-source .print-manual .print-wide-table-page,
+.print-output .print-wide-table-page {
+  break-before: page;
+  break-after: page;
+  page-break-before: always;
+  page-break-after: always;
+}
+
+.export-source .print-manual .print-wide-table-page--a4,
+.print-output .print-wide-table-page--a4 {
+  page: print-landscape-a4;
+}
+
+.export-source .print-manual .print-wide-table-page--a3,
+.print-output .print-wide-table-page--a3 {
+  page: print-landscape-a3;
+}
+
+.export-source .print-manual table.print-table--landscape-a4,
+.export-source .print-manual table.print-table--landscape-a3,
+.print-output table.print-table--landscape-a4,
+.print-output table.print-table--landscape-a3 {
+  font-size: 8.2pt;
+  line-height: 1.08;
+}
+
+.export-source .print-manual pre,
+.export-source .print-manual code,
+.print-output pre,
+.print-output code {
+  /* "Source Code Pro" is embedded above. The previous stack named Consolas and
+     Courier New, neither of which exists in the container: fontconfig substituted at
+     "Courier New" and every export embedded Liberation Mono — a system fallback, in a
+     design that embeds every other face deliberately. */
+  font-family: "Source Code Pro", monospace;
+}
+
+/* These two declarations decide how a code block is allowed to break, and both are
+   load-bearing — each one alone loses text from the PDF.
+
+   overflow MUST stay visible. A box with overflow other than visible is monolithic
+   under CSS fragmentation, so Chromium refuses to break the <pre> at a line boundary;
+   paged.js then splits it anyway and the trailing line is left overhanging the page
+   content box, where print-time relayout culls it. That line lands on neither page —
+   it is simply missing from the PDF. Infima's base rule is `pre { overflow: auto }`,
+   which is monolithic too, so this declaration is what keeps code blocks breakable.
+   Nothing is needed to contain long lines: pre-wrap plus the wrap rules below do it.
+
+   break-inside then says "move me rather than split me". Without it, a block that
+   starts near the bottom of a page is split there and the lines that do not fit go to
+   paged.js's off-page column, which is dropped from the PDF — trading one loss for
+   another (ansible-admin lost "Pool started (with 5 workers)" that way). "avoid" is a
+   hint, so a code block taller than a page still splits normally.
+
+   The rule below is part of the same fix: overflow:hidden was ALSO containing the
+   floated <code> child, and dropping it collapsed the <pre> to height 0. */
+.export-source .print-manual pre,
+.print-output pre {
+  overflow: visible;
+  break-inside: avoid;
+  page-break-inside: avoid;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  border: 1px solid #d8dee9;
+  background: #f6f8fb;
+  padding: 0.7rem 0.8rem;
+  font-size: 10pt;
+}
+
+/* Docusaurus floats the code lines (`float: left; min-width: 100%`) so the block's
+   background spans its horizontal scroll width. A float does not contribute to its
+   parent's height unless the parent establishes a block formatting context — which is
+   what the `overflow: hidden` above used to do, by accident. With overflow visible the
+   <pre> collapses to height 0 and its background prints as a thin bar above unstyled
+   code. Print wraps instead of scrolling, so the float has no purpose here: dropping it
+   restores normal-flow height without making the box a scroll container again. */
+.export-source .print-manual pre > code,
+.print-output pre > code {
+  float: none;
+  display: block;
+}
+
+/* Interactive disclosure widgets are converted to ordinary blocks by PrintHtmlGenerator.
+   Explicitly keep every wrapper fragmentable: Docusaurus adds two anonymous-looking divs
+   between <details> and a code block, and a theme may otherwise constrain either wrapper. */
+.export-source .print-manual .print-details,
+.export-source .print-manual .print-details > div,
+.export-source .print-manual .print-details [class*="collapsibleContent"],
+.print-output .print-details,
+.print-output .print-details > div,
+.print-output .print-details [class*="collapsibleContent"] {
+  display: block;
+  height: auto;
+  max-height: none;
+  overflow: visible;
+  break-inside: auto;
+  page-break-inside: auto;
+}
+
+.export-source .print-manual .print-details__summary,
+.print-output .print-details__summary {
+  margin-bottom: 0.65rem;
+  font-weight: 700;
+}
+
+.export-source .print-manual blockquote,
+.print-output blockquote {
+  margin: 0.8rem 0;
+  padding-left: 0.9rem;
+  border-left: 3px solid #7d91a8;
+  color: #334155;
+}
+
+/* The cover is a typographic title page rather than a centred name on white: the mark at the
+   head, the title low in the volume serif, one accent rule, and the publication metadata under
+   it in small tracked capitals. Everything hangs off a single left axis, so the page reads as
+   composed instead of as a placeholder. */
+.print-cover {
+  min-height: 244mm;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  padding: 4mm 0 12mm;
+}
+
+.print-cover__brand {
+  grid-row: 1;
+  justify-self: start;
+}
+
+/* Bounded rather than sized: a navbar logo can be any aspect ratio, and contain-style fitting
+   keeps a tall one from pushing the title block down the page. */
+.print-cover__brand--logo img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-height: 22mm;
+  max-width: 80mm;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.print-cover__wordmark {
+  color: #111827;
+  font-size: 11pt;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+/* Below the optical centre: high enough that the page is not bottom-heavy, low enough that the
+   mark at the head and the title read as two separate events rather than one block. Measured from
+   the top of the free row rather than centred, so a tall logo does not drag the title with it. */
+.print-cover__title-block {
+  grid-row: 2;
+  align-self: start;
+  padding-top: 96mm;
+}
+
+/* The one accent mark above the title: a short rule, not a divider across the measure. */
+.print-cover__title-block::before {
+  content: "";
+  display: block;
+  width: 26mm;
+  height: 1.6pt;
+  background: var(--manual-accent);
+  margin-bottom: 6mm;
+}
+
+.print-cover h1 {
+  color: #111827;
+  font-family: "Source Sans 3", Calibri, "Helvetica Neue", Arial, sans-serif;
+  font-size: 38pt;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+  margin: 0;
+  text-align: left;
+  text-wrap: balance;
+  max-width: 22ch;
+}
+
+/* The one accent mark on the cover. It sits between the title and its metadata, which is the
+   join the whole page is built around, and it is a rule rather than coloured text so the ink
+   theme loses a hairline's colour and nothing else. */
+.print-cover__meta {
+  grid-row: 3;
+  align-self: end;
+  margin: 0;
+  color: #4b5563;
+}
+
+.print-cover__meta div {
+  display: flex;
+  align-items: baseline;
+  gap: 4mm;
+}
+
+.print-cover__meta div + div {
+  margin-top: 2mm;
+}
+
+.print-cover__meta dt,
+.print-cover__meta dd {
+  margin: 0;
+  font-size: 9pt;
+  line-height: 1.3;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.print-cover__meta dt {
+  font-weight: 700;
+  color: #111827;
+  min-width: 26mm;
+}
+
+.print-cover__meta dd {
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.print-toc {
+  break-before: page;
+  page-break-before: always;
+}
+
+.print-toc h2 {
+  color: var(--manual-accent);
+  font-size: 30pt;
+  margin-bottom: 1rem;
+}
+
+.print-toc ol {
+  list-style: none;
+  padding-left: 0;
+}
+
+.print-toc ol ol {
+  padding-left: 0;
+  margin-top: 0.25rem;
+}
+
+.print-toc__number {
+  display: inline-block;
+  min-width: 15mm;
+  flex: 0 0 auto;
+}
+
+.print-toc__title {
+  min-width: 0;
+}
+
+.print-toc__leader {
+  flex: 1 1 auto;
+  min-width: 8mm;
+  margin: 0 2.5mm 0 3mm;
+  position: relative;
+  align-self: stretch;
+}
+
+.print-toc__leader::before {
+  color: #9aa6b4;
+  content: ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0.2em;
+  overflow: hidden;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+/* break-inside is what lets paged.js move a TOC entry that does not fit rather than
+   leave it in the off-page column, where it is dropped from the PDF entirely (manual F
+   lost a long level-3 contents entry this way). The
+   entry's own <a> is display:flex and paged.js will not take a break decision from it,
+   so the declaration has to sit on the li — it has no effect on the <a>.
+
+   It must NOT apply to an li that contains a nested list. The TOC is a nested <ol>, so
+   a chapter's li holds its whole subtree, and paged.js treats a break-inside:avoid
+   element as atomic (it refuses to walk into its children). A chapter that does not fit
+   is then moved WHOLE to the next page: measured on manual I, that left two thirds of the
+   contents page blank and pushed chapter 4 over, costing the document a page. Only the
+   individual entries — one unsplittable line each — should be atomic. Indentation comes
+   from a[data-bookmark-level], not from the nesting, so this selector is purely about
+   pagination. */
+.print-toc li {
+  margin: 0 0 0.25rem;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.print-toc li:has(> ol),
+.print-toc li:has(> ul) {
+  break-inside: auto;
+  page-break-inside: auto;
+}
+
+.print-toc a {
+  display: flex;
+  align-items: baseline;
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Level 1 is a chapter heading with entries under it, not the first of them. Weight alone does
+   not say so -- 800 against the 700 of level 2 is barely visible at this size -- and color cannot
+   say it either, since the default ink theme has none. Dropping the leader is what does the work: the
+   title sits left, the page number right, and the white space between them separates a chapter
+   from its sections without costing a millimetre of page height. The leader box itself stays, so
+   the page number keeps its column. */
+.print-toc a[data-bookmark-level="1"] {
+  color: var(--manual-accent);
+  font-weight: 800;
+}
+
+.print-toc a[data-bookmark-level="1"] .print-toc__leader::before {
+  content: none;
+}
+
+.print-toc a[data-bookmark-level="2"] {
+  color: #111827;
+  font-weight: 700;
+  padding-left: 6mm;
+}
+
+.print-toc a[data-bookmark-level="3"] {
+  color: #111827;
+  font-weight: 400;
+  padding-left: 12mm;
+}
+
+/* Levels 4-6 only appear when --max-chapter-level raises the limit above its default of 3.
+   They continue the 6mm-per-level indent so a deeper contents table still reads as a hierarchy
+   rather than a flat list; without these rules the extra levels would sit at zero indent. */
+.print-toc a[data-bookmark-level="4"] {
+  color: #111827;
+  font-weight: 400;
+  padding-left: 18mm;
+}
+
+.print-toc a[data-bookmark-level="5"] {
+  color: #111827;
+  font-weight: 400;
+  padding-left: 24mm;
+}
+
+.print-toc a[data-bookmark-level="6"] {
+  color: #111827;
+  font-weight: 400;
+  padding-left: 30mm;
+}
+
+/* min-width reserves the page number's space while the TOC is being paginated.
+   target-counter cannot be resolved until every page exists, so during layout this box
+   is EMPTY and only gains "108" afterwards. Without a reserved width that late growth
+   re-flows the flex line — a long title that just fitted wraps to a second line, the
+   entries below shift down, and the last one is pushed into the off-page column, where
+   the PDF culls it. It happens after paged.js's off-page shrink-and-retry has already
+   validated the page, so nothing catches it: manual F's contents silently lost
+   a long level-3 contents entry, which appeared on no
+   page at all. 9mm holds four digits at this font size, so no manual in the corpus can
+   outgrow it. */
+.print-toc a::after {
+  content: target-counter(attr(href), page);
+  flex: 0 0 auto;
+  min-width: 9mm;
+  text-align: right;
+  font-weight: 400;
+}
+
+
+.print-chapter-title[data-print-number]::before {
+  content: attr(data-print-number) " ";
+}
+
+.print-chapter-title--level-1 {
+  string-set: print-chapter-title content(text);
+}
+
+.print-chapter {
+  break-before: auto;
+  page-break-before: auto;
+  padding-top: 2mm;
+}
+
+.print-chapter--level-1 {
+  break-before: page;
+  page-break-before: always;
+}
+
+.print-chapter:first-of-type {
+  break-before: auto;
+  page-break-before: auto;
+}
+
+/* The .print-chapter--level-1 break above only fires at a section boundary, but a single
+   section can hold several top-level chapter headings (single-page manuals concatenate every
+   chapter into one page; some multi-page chapters carry extra top-level headings in their body).
+   PrintHtmlGenerator marks every top-level heading after the first-in-section with
+   .print-chapter-break so each starts on a fresh page. The first-in-section heading stays
+   unmarked: it flows after the TOC (first chapter) or is already broken by its section wrapper. */
+h1.print-chapter-break {
+  break-before: page;
+  page-break-before: always;
+}
+
+.pagedjs_pages {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.pagedjs_page {
+  position: relative;
+  background: #ffffff;
+  margin: 0 auto 1.5rem;
+  margin-bottom: 20px !important;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.14);
+}
+
+/* Brand Profile logo in the running header, set per manual by PrintHtmlGenerator as
+   --manual-logo. Painted as a background rather than through the @page margin box's own
+   `content: none`, because content-replaced pseudo-elements take the image's intrinsic size and
+   an SVG carrying only a viewBox has none -- an arbitrary customer logo would size unpredictably.
+   The empty `content` in each @page @top-left is what makes Paged.js generate this box at all;
+   removing it removes the header logo. */
+.pagedjs_margin-top-left > .pagedjs_margin-content::after {
+  content: "";
+  display: block;
+  height: 7mm;
+  background-image: var(--manual-logo, none);
+  background-repeat: no-repeat;
+  background-position: left center;
+  background-size: contain;
+}
+
+/* The cover carries the logo as an <img>; the running header must not repeat it there. */
+.pagedjs_first_page .pagedjs_margin-top-left > .pagedjs_margin-content::after {
+  background-image: none;
+}
+
+
+
+/* Evaluation Mode is visible in browser preview. The final PDF receives the same treatment
+   as a graphical post-processing overlay, so this preview layer is hidden immediately before
+   page.pdf() to avoid superimposing two marks. */
+
+body[data-pdf-export="true"] .pagedjs_page::after {
+  content: none;
+}
+
+/* An Open Source or Organization entitlement removes the evaluation mark. Written as an override
+   rather than as a condition on the rule above, so a page carrying no entitlement attribute at all
+   keeps the mark. Preview only: the PDF receives its mark from the engine after rendering. */
+
+@media print {
+  body[data-print-ready="false"] .export-preview::before {
+    display: none;
+  }
+
+  .export-source {
+    display: none !important;
+  }
+
+  .export-preview {
+    padding: 0;
+  }
+
+  .pagedjs_pages {
+    display: block !important;
+    gap: 0 !important;
+  }
+
+  .pagedjs_page {
+    break-after: page !important;
+    page-break-after: always !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    margin: 0 auto !important;
+    box-shadow: none !important;
+  }
+
+  .pagedjs_page:last-child {
+    break-after: auto !important;
+    page-break-after: auto !important;
+  }
+}
+
+</style><style>.md-typeset .mdx-iconsearch-result__item>*{margin-right:.6rem}.md-typeset .mdx-iconsearch-result__item img{height:.9rem;width:.9rem}[data-md-color-scheme=slate] .md-typeset .mdx-iconsearch-result__item img[src*=squidfunk]{filter:invert(1)}.md-typeset .mdx-premium p{margin:2em 0;text-align:center}.md-typeset .mdx-premium img{height:3.25rem}.md-typeset .mdx-premium p:last-child{display:flex;flex-wrap:wrap;justify-content:center}.md-typeset .mdx-premium p:last-child>a{display:block;flex-shrink:0}.md-typeset .mdx-sponsorship__list{margin:2em 0}.md-typeset .mdx-sponsorship__list:after{clear:both;content:"";display:block}[dir=ltr] .md-typeset .mdx-sponsorship__item{float:left}[dir=rtl] .md-typeset .mdx-sponsorship__item{float:right}.md-typeset .mdx-sponsorship__item{border-radius:100%;display:block;height:1.6rem;margin:.2rem;overflow:hidden;transform:scale(1);transition:color 125ms,transform 125ms;width:1.6rem}.md-typeset .mdx-sponsorship__item:focus,.md-typeset .mdx-sponsorship__item:hover{transform:scale(1.1)}.md-typeset .mdx-sponsorship__item:focus img,.md-typeset .mdx-sponsorship__item:hover img{filter:grayscale(0)}.md-typeset .mdx-sponsorship__item--private{background:var(--md-default-fg-color--lightest);color:var(--md-default-fg-color--lighter);font-size:.6rem;font-weight:700;line-height:1.6rem;text-align:center}.md-typeset .mdx-sponsorship__item img{display:block;filter:grayscale(100%) opacity(75%);height:auto;transition:filter 125ms;width:100%}.md-typeset .mdx-sponsorship-button{font-weight:400}.md-typeset .mdx-sponsorship-count,.md-typeset .mdx-sponsorship-total{font-weight:700}
+
+@charset "UTF-8";html{-webkit-text-size-adjust:none;-moz-text-size-adjust:none;text-size-adjust:none;box-sizing:border-box}body{margin:0}:root{--md-primary-fg-color:#4051b5;--md-primary-fg-color--light:#5d6cc0;--md-primary-fg-color--dark:#303fa1;--md-primary-bg-color:#fff;--md-primary-bg-color--light:#ffffffb3;--md-accent-fg-color:#526cfe;--md-accent-fg-color--transparent:#526cfe1a;--md-accent-bg-color:#fff;--md-accent-bg-color--light:#ffffffb3}:root,[data-md-color-scheme=default]{--md-hue:225deg;--md-default-fg-color:#000000de;--md-default-fg-color--light:#0000008a;--md-default-fg-color--lighter:#00000052;--md-default-fg-color--lightest:#00000012;--md-default-bg-color:#fff;--md-default-bg-color--light:#ffffffb3;--md-default-bg-color--lighter:#ffffff4d;--md-default-bg-color--lightest:#ffffff1f;--md-code-fg-color:#36464e;--md-code-bg-color:#f5f5f5;--md-code-bg-color--light:#f5f5f5b3;--md-code-bg-color--lighter:#f5f5f54d;--md-code-hl-color:#4287ff;--md-code-hl-color--light:#4287ff1a;--md-code-hl-number-color:#d52a2a;--md-code-hl-special-color:#db1457;--md-code-hl-function-color:#a846b9;--md-code-hl-constant-color:#6e59d9;--md-code-hl-keyword-color:#3f6ec6;--md-code-hl-string-color:#1c7d4d;--md-code-hl-name-color:var(--md-code-fg-color);--md-code-hl-operator-color:var(--md-default-fg-color--light);--md-code-hl-punctuation-color:var(--md-default-fg-color--light);--md-code-hl-comment-color:var(--md-default-fg-color--light);--md-code-hl-generic-color:var(--md-default-fg-color--light);--md-code-hl-variable-color:var(--md-default-fg-color--light);--md-typeset-color:var(--md-default-fg-color);--md-typeset-a-color:var(--md-primary-fg-color);--md-typeset-del-color:#f5503d26;--md-typeset-ins-color:#0bd57026;--md-typeset-kbd-color:#fafafa;--md-typeset-kbd-accent-color:#fff;--md-typeset-kbd-border-color:#b8b8b8;--md-typeset-mark-color:#ffff0080;--md-typeset-table-color:#0000001f;--md-typeset-table-color--light:rgba(0,0,0,.035);--md-admonition-fg-color:var(--md-default-fg-color);--md-admonition-bg-color:var(--md-default-bg-color);--md-warning-fg-color:#000000de;--md-warning-bg-color:#ff9;--md-footer-fg-color:#fff;--md-footer-fg-color--light:#ffffffb3;--md-footer-fg-color--lighter:#ffffff73;--md-footer-bg-color:#000000de;--md-footer-bg-color--dark:#00000052;--md-shadow-z1:0 0.2rem 0.5rem #0000000d,0 0 0.05rem #0000001a;--md-shadow-z2:0 0.2rem 0.5rem #0000001a,0 0 0.05rem #00000040;--md-shadow-z3:0 0.2rem 0.5rem #0003,0 0 0.05rem #00000059}body{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;--md-text-font-family:var(--md-text-font,_),-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif;--md-code-font-family:var(--md-code-font,_),SFMono-Regular,Consolas,Menlo,monospace}aside,body,input{font-feature-settings:"kern","liga";color:var(--md-typeset-color);font-family:var(--md-text-font-family)}code,kbd,pre{font-feature-settings:"kern";font-family:var(--md-code-font-family)}:root{--md-typeset-table-sort-icon:url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m18 21-4-4h3V7h-3l4-4 4 4h-3v10h3M2 19v-2h10v2M2 13v-2h7v2M2 7V5h4v2z"/></svg>');--md-typeset-table-sort-icon--asc:url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 17h3l-4 4-4-4h3V3h2M2 17h10v2H2M6 5v2H2V5m0 6h7v2H2z"/></svg>');--md-typeset-table-sort-icon--desc:url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 7h3l-4-4-4 4h3v14h2M2 17h10v2H2M6 5v2H2V5m0 6h7v2H2z"/></svg>')}.md-typeset{-webkit-print-color-adjust:exact;color-adjust:exact;font-size:.8rem;line-height:1.6;overflow-wrap:break-word}@media print{.md-typeset{font-size:.68rem}}.md-typeset blockquote,.md-typeset dl,.md-typeset figure,.md-typeset ol,.md-typeset pre,.md-typeset ul{margin-bottom:1em;margin-top:1em}.md-typeset h1{color:var(--md-default-fg-color--light);font-size:2em;line-height:1.3;margin:0 0 1.25em}.md-typeset h1,.md-typeset h2{font-weight:300;letter-spacing:-.01em}.md-typeset h2{font-size:1.5625em;line-height:1.4;margin:1.6em 0 .64em}.md-typeset h3{font-size:1.25em;font-weight:400;letter-spacing:-.01em;line-height:1.5;margin:1.6em 0 .8em}.md-typeset h2+h3{margin-top:.8em}.md-typeset h4{font-weight:700;letter-spacing:-.01em;margin:1em 0}.md-typeset h5,.md-typeset h6{color:var(--md-default-fg-color--light);font-size:.8em;font-weight:700;letter-spacing:-.01em;margin:1.25em 0}.md-typeset h5{text-transform:uppercase}.md-typeset h5 code{text-transform:none}.md-typeset hr{border-bottom:.05rem solid var(--md-default-fg-color--lightest);display:flow-root;margin:1.5em 0}.md-typeset a{color:var(--md-typeset-a-color);word-break:break-word}.md-typeset a,.md-typeset a:before{transition:color 125ms}.md-typeset a:focus,.md-typeset a:hover{color:var(--md-accent-fg-color)}.md-typeset a:focus code,.md-typeset a:hover code{background-color:var(--md-accent-fg-color--transparent);color:var(--md-accent-fg-color)}.md-typeset a code{color:var(--md-typeset-a-color)}.md-typeset a.focus-visible{outline-color:var(--md-accent-fg-color);outline-offset:.2rem}.md-typeset code,.md-typeset kbd,.md-typeset pre{color:var(--md-code-fg-color);direction:ltr;font-variant-ligatures:none;transition:background-color 125ms}@media print{.md-typeset code,.md-typeset kbd,.md-typeset pre{white-space:pre-wrap}}.md-typeset code{background-color:var(--md-code-bg-color);border-radius:.1rem;-webkit-box-decoration-break:clone;box-decoration-break:clone;font-size:.85em;padding:0 .2941176471em;transition:color 125ms,background-color 125ms;word-break:break-word}.md-typeset code:not(.focus-visible){-webkit-tap-highlight-color:transparent;outline:none}.md-typeset pre{display:flow-root;line-height:1.4;position:relative}.md-typeset pre>code{-webkit-box-decoration-break:slice;box-decoration-break:slice;box-shadow:none;display:block;margin:0;outline-color:var(--md-accent-fg-color);overflow:auto;padding:.7720588235em 1.1764705882em;scrollbar-color:var(--md-default-fg-color--lighter) #0000;scrollbar-width:thin;touch-action:auto;word-break:normal}.md-typeset pre>code:hover{scrollbar-color:var(--md-accent-fg-color) #0000}.md-typeset pre>code::-webkit-scrollbar{height:.2rem;width:.2rem}.md-typeset pre>code::-webkit-scrollbar-thumb{background-color:var(--md-default-fg-color--lighter)}.md-typeset pre>code::-webkit-scrollbar-thumb:hover{background-color:var(--md-accent-fg-color)}.md-typeset kbd{background-color:var(--md-typeset-kbd-color);border-radius:.1rem;box-shadow:0 .1rem 0 .05rem var(--md-typeset-kbd-border-color),0 .1rem 0 var(--md-typeset-kbd-border-color),0 -.1rem .2rem var(--md-typeset-kbd-accent-color) inset;color:var(--md-default-fg-color);display:inline-block;font-size:.75em;padding:0 .6666666667em;vertical-align:text-top;word-break:break-word}.md-typeset mark{background-color:var(--md-typeset-mark-color);-webkit-box-decoration-break:clone;box-decoration-break:clone;color:inherit;word-break:break-word}.md-typeset abbr{cursor:help;text-decoration:none}.md-typeset [data-preview],.md-typeset abbr{border-bottom:.05rem dotted var(--md-default-fg-color--light)}.md-typeset small{opacity:.75}[dir=ltr] .md-typeset sub,[dir=ltr] .md-typeset sup{margin-left:.078125em}[dir=rtl] .md-typeset sub,[dir=rtl] .md-typeset sup{margin-right:.078125em}[dir=ltr] .md-typeset blockquote{padding-left:.6rem}[dir=rtl] .md-typeset blockquote{padding-right:.6rem}[dir=ltr] .md-typeset blockquote{border-left:.2rem solid var(--md-default-fg-color--lighter)}[dir=rtl] .md-typeset blockquote{border-right:.2rem solid var(--md-default-fg-color--lighter)}.md-typeset blockquote{color:var(--md-default-fg-color--light);margin-left:0;margin-right:0}.md-typeset ul{list-style-type:disc}.md-typeset ul[type]{list-style-type:revert-layer}[dir=ltr] .md-typeset ol,[dir=ltr] .md-typeset ul{margin-left:.625em}[dir=rtl] .md-typeset ol,[dir=rtl] .md-typeset ul{margin-right:.625em}.md-typeset ol,.md-typeset ul{padding:0}.md-typeset ol:not([hidden]),.md-typeset ul:not([hidden]){display:flow-root}.md-typeset ol ol,.md-typeset ul ol{list-style-type:lower-alpha}.md-typeset ol ol ol,.md-typeset ul ol ol{list-style-type:lower-roman}.md-typeset ol ol ol ol,.md-typeset ul ol ol ol{list-style-type:upper-alpha}.md-typeset ol ol ol ol ol,.md-typeset ul ol ol ol ol{list-style-type:upper-roman}.md-typeset ol[type],.md-typeset ul[type]{list-style-type:revert-layer}[dir=ltr] .md-typeset ol li,[dir=ltr] .md-typeset ul li{margin-left:1.25em}[dir=rtl] .md-typeset ol li,[dir=rtl] .md-typeset ul li{margin-right:1.25em}.md-typeset ol li,.md-typeset ul li{margin-bottom:.5em}.md-typeset ol li blockquote,.md-typeset ol li p,.md-typeset ul li blockquote,.md-typeset ul li p{margin:.5em 0}.md-typeset ol li:last-child,.md-typeset ul li:last-child{margin-bottom:0}[dir=ltr] .md-typeset ol li ol,[dir=ltr] .md-typeset ol li ul,[dir=ltr] .md-typeset ul li ol,[dir=ltr] .md-typeset ul li ul{margin-left:.625em}[dir=rtl] .md-typeset ol li ol,[dir=rtl] .md-typeset ol li ul,[dir=rtl] .md-typeset ul li ol,[dir=rtl] .md-typeset ul li ul{margin-right:.625em}.md-typeset ol li ol,.md-typeset ol li ul,.md-typeset ul li ol,.md-typeset ul li ul{margin-bottom:.5em;margin-top:.5em}[dir=ltr] .md-typeset dd{margin-left:1.875em}[dir=rtl] .md-typeset dd{margin-right:1.875em}.md-typeset dd{margin-bottom:1.5em;margin-top:1em}.md-typeset img,.md-typeset svg,.md-typeset video{height:auto;max-width:100%}.md-typeset img[align=left]{margin:1em 1em 1em 0}.md-typeset img[align=right]{margin:1em 0 1em 1em}.md-typeset img[align]:only-child{margin-top:0}.md-typeset figure{display:flow-root;margin:1em auto;max-width:100%;text-align:center;width:fit-content}.md-typeset figure img{display:block;margin:0 auto}.md-typeset figcaption{font-style:italic;margin:1em auto;max-width:24rem}.md-typeset iframe{max-width:100%}.md-typeset table:not([class]){background-color:var(--md-default-bg-color);border:.05rem solid var(--md-typeset-table-color);border-radius:.1rem;display:inline-block;font-size:.64rem;max-width:100%;overflow:auto;touch-action:auto}@media print{.md-typeset table:not([class]){display:table}}.md-typeset table:not([class])+*{margin-top:1.5em}.md-typeset table:not([class]) td>:first-child,.md-typeset table:not([class]) th>:first-child{margin-top:0}.md-typeset table:not([class]) td>:last-child,.md-typeset table:not([class]) th>:last-child{margin-bottom:0}.md-typeset table:not([class]) td:not([align]),.md-typeset table:not([class]) th:not([align]){text-align:left}[dir=rtl] .md-typeset table:not([class]) td:not([align]),[dir=rtl] .md-typeset table:not([class]) th:not([align]){text-align:right}.md-typeset table:not([class]) th{font-weight:700;min-width:5rem;padding:.9375em 1.25em;vertical-align:top}.md-typeset table:not([class]) td{border-top:.05rem solid var(--md-typeset-table-color);padding:.9375em 1.25em;vertical-align:top}.md-typeset table:not([class]) tbody tr{transition:background-color 125ms}.md-typeset table:not([class]) tbody tr:hover{background-color:var(--md-typeset-table-color--light);box-shadow:0 .05rem 0 var(--md-default-bg-color) inset}.md-typeset table:not([class]) a{word-break:normal}.md-typeset table th[role=columnheader]{cursor:pointer}[dir=ltr] .md-typeset table th[role=columnheader]:after{margin-left:.5em}[dir=rtl] .md-typeset table th[role=columnheader]:after{margin-right:.5em}.md-typeset table th[role=columnheader]:after{content:"";display:inline-block;height:1.2em;-webkit-mask-image:var(--md-typeset-table-sort-icon);mask-image:var(--md-typeset-table-sort-icon);-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-size:contain;mask-size:contain;transition:background-color 125ms;vertical-align:text-bottom;width:1.2em}.md-typeset table th[role=columnheader]:hover:after{background-color:var(--md-default-fg-color--lighter)}.md-typeset table th[role=columnheader][aria-sort=ascending]:after{background-color:var(--md-default-fg-color--light);-webkit-mask-image:var(--md-typeset-table-sort-icon--asc);mask-image:var(--md-typeset-table-sort-icon--asc)}.md-typeset table th[role=columnheader][aria-sort=descending]:after{background-color:var(--md-default-fg-color--light);-webkit-mask-image:var(--md-typeset-table-sort-icon--desc);mask-image:var(--md-typeset-table-sort-icon--desc)}.md-typeset__scrollwrap{margin:1em -.8rem;overflow-x:auto;touch-action:auto}.md-typeset__table{display:inline-block;margin-bottom:.5em;padding:0 .8rem}@media print{.md-typeset__table{display:block}}html .md-typeset__table table{display:table;margin:0;overflow:hidden;width:100%}@media screen and (max-width:44.984375em){.md-content__inner>pre{margin:1em -.8rem}.md-content__inner>pre code{border-radius:0}}.md-typeset .md-author{border-radius:100%;display:block;flex-shrink:0;height:1.6rem;overflow:hidden;position:relative;transition:color 125ms,transform 125ms;width:1.6rem}.md-typeset .md-author img{display:block}.md-typeset .md-author--more{background:var(--md-default-fg-color--lightest);color:var(--md-default-fg-color--lighter);font-size:.6rem;font-weight:700;line-height:1.6rem;text-align:center}.md-typeset .md-author--long{height:2.4rem;width:2.4rem}.md-typeset a.md-author{transform:scale(1)}.md-typeset a.md-author img{border-radius:100%;filter:grayscale(100%) opacity(75%);transition:filter 125ms}.md-typeset a.md-author:focus,.md-typeset a.md-author:hover{transform:scale(1.1);z-index:1}.md-typeset a.md-author:focus img,.md-typeset a.md-author:hover img{filter:grayscale(0)}html{font-size:125%;height:100%;overflow-x:hidden}@media screen and (min-width:100em){html{font-size:137.5%}}@media screen and (min-width:125em){html{font-size:150%}}body{background-color:var(--md-default-bg-color);display:flex;flex-direction:column;font-size:.5rem;min-height:100%;position:relative;width:100%}@media print{body{display:block}}@media screen and (max-width:59.984375em){body[data-md-scrolllock]{position:fixed}}.md-grid{margin-left:auto;margin-right:auto;max-width:61rem}@page{margin:25mm}:root{--md-clipboard-icon:url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 21H8V7h11m0-2H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2m-3-4H4a2 2 0 0 0-2 2v14h2V3h12z"/></svg>')}.md-clipboard--inline code{transition:color .25s,background-color .25s}.md-clipboard--inline:focus code,.md-clipboard--inline:hover code{background-color:var(--md-accent-fg-color--transparent);color:var(--md-accent-fg-color)}:root{--md-code-select-icon:url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 19h-4v2h4c1.1 0 2-.9 2-2v-4h-2m0-12h-4v2h4v4h2V5c0-1.1-.9-2-2-2M5 5h4V3H5c-1.1 0-2 .9-2 2v4h2m0 6H3v4c0 1.1.9 2 2 2h4v-2H5zm2-4h2v2H7zm4 0h2v2h-2zm4 0h2v2h-2zM7 7h2v2H7zm4 0h2v2h-2zm4 0h2v2h-2zm-8 8h2v2H7zm4 0h2v2h-2zm4 0h2v2h-2z"/></svg>');--md-code-copy-icon:url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 21H8V7h11m0-2H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2m-3-4H4a2 2 0 0 0-2 2v14h2V3h12z"/></svg>')}.md-typeset .md-code__content{display:grid}.md-code__nav{background-color:var(--md-code-bg-color--lighter);border-radius:.1rem;display:flex;gap:.2rem;padding:.2rem;position:absolute;right:.25em;top:.25em;transition:background-color .25s;z-index:1}:hover>.md-code__nav{background-color:var(--md-code-bg-color--light)}.md-code__button{color:var(--md-default-fg-color--lightest);cursor:pointer;display:block;height:1.5em;outline-color:var(--md-accent-fg-color);outline-offset:.1rem;transition:color .25s;width:1.5em}:hover>*>.md-code__button{color:var(--md-default-fg-color--light)}.md-code__button.focus-visible,.md-code__button:hover{color:var(--md-accent-fg-color)}.md-code__button--active{color:var(--md-default-fg-color)!important}.md-typeset .tabbed-labels{-ms-overflow-style:none;box-shadow:0 -.05rem var(--md-default-fg-color--lightest) inset;display:flex;max-width:100%;overflow:auto;scrollbar-width:none}@media print{.md-typeset .tabbed-labels{display:contents}}@media screen{.js .md-typeset .tabbed-labels{position:relative}.js .md-typeset .tabbed-labels:before{background:var(--md-default-fg-color);bottom:0;content:"";display:block;height:2px;left:0;position:absolute;transform:translateX(var(--md-indicator-x));transition:width 225ms,background-color .25s,transform .25s;transition-timing-function:cubic-bezier(.4,0,.2,1);width:var(--md-indicator-width)}}.md-typeset .tabbed-labels::-webkit-scrollbar{display:none}.md-typeset .tabbed-labels>label{border-bottom:.1rem solid #0000;border-radius:.1rem .1rem 0 0;color:var(--md-default-fg-color--light);cursor:pointer;flex-shrink:0;font-size:.64rem;font-weight:700;padding:.78125em 1.25em .625em;scroll-margin-inline-start:1rem;transition:background-color .25s,color .25s;white-space:nowrap;width:auto}@media print{.md-typeset .tabbed-labels>label:first-child{order:1}.md-typeset .tabbed-labels>label:nth-child(2){order:2}.md-typeset .tabbed-labels>label:nth-child(3){order:3}.md-typeset .tabbed-labels>label:nth-child(4){order:4}.md-typeset .tabbed-labels>label:nth-child(5){order:5}.md-typeset .tabbed-labels>label:nth-child(6){order:6}.md-typeset .tabbed-labels>label:nth-child(7){order:7}.md-typeset .tabbed-labels>label:nth-child(8){order:8}.md-typeset .tabbed-labels>label:nth-child(9){order:9}.md-typeset .tabbed-labels>label:nth-child(10){order:10}.md-typeset .tabbed-labels>label:nth-child(11){order:11}.md-typeset .tabbed-labels>label:nth-child(12){order:12}.md-typeset .tabbed-labels>label:nth-child(13){order:13}.md-typeset .tabbed-labels>label:nth-child(14){order:14}.md-typeset .tabbed-labels>label:nth-child(15){order:15}.md-typeset .tabbed-labels>label:nth-child(16){order:16}.md-typeset .tabbed-labels>label:nth-child(17){order:17}.md-typeset .tabbed-labels>label:nth-child(18){order:18}.md-typeset .tabbed-labels>label:nth-child(19){order:19}.md-typeset .tabbed-labels>label:nth-child(20){order:20}}.md-typeset .tabbed-labels>label:hover{color:var(--md-default-fg-color)}.md-typeset .tabbed-labels>label>[href]:first-child{color:inherit}.md-typeset .tabbed-labels--linked>label{padding:0}.md-typeset .tabbed-labels--linked>label>a{display:block;padding:.78125em 1.25em .625em}.md-typeset .tabbed-content{width:100%}@media print{.md-typeset .tabbed-content{display:contents}}.md-typeset .tabbed-block{display:none}@media print{.md-typeset .tabbed-block{display:block}.md-typeset .tabbed-block:first-child{order:1}.md-typeset .tabbed-block:nth-child(2){order:2}.md-typeset .tabbed-block:nth-child(3){order:3}.md-typeset .tabbed-block:nth-child(4){order:4}.md-typeset .tabbed-block:nth-child(5){order:5}.md-typeset .tabbed-block:nth-child(6){order:6}.md-typeset .tabbed-block:nth-child(7){order:7}.md-typeset .tabbed-block:nth-child(8){order:8}.md-typeset .tabbed-block:nth-child(9){order:9}.md-typeset .tabbed-block:nth-child(10){order:10}.md-typeset .tabbed-block:nth-child(11){order:11}.md-typeset .tabbed-block:nth-child(12){order:12}.md-typeset .tabbed-block:nth-child(13){order:13}.md-typeset .tabbed-block:nth-child(14){order:14}.md-typeset .tabbed-block:nth-child(15){order:15}.md-typeset .tabbed-block:nth-child(16){order:16}.md-typeset .tabbed-block:nth-child(17){order:17}.md-typeset .tabbed-block:nth-child(18){order:18}.md-typeset .tabbed-block:nth-child(19){order:19}.md-typeset .tabbed-block:nth-child(20){order:20}}.md-typeset .tabbed-block>.highlight:first-child>pre,.md-typeset .tabbed-block>pre:first-child{margin:0}.md-typeset .tabbed-block>.highlight:first-child>pre>code,.md-typeset .tabbed-block>pre:first-child>code{border-top-left-radius:0;border-top-right-radius:0}.md-typeset .tabbed-block>.highlight:first-child>.filename{border-top-left-radius:0;border-top-right-radius:0;margin:0}.md-typeset .tabbed-block>.highlight:first-child>.highlighttable{margin:0}.md-typeset .tabbed-block>.highlight:first-child>.highlighttable>tbody>tr>.filename span.filename,.md-typeset .tabbed-block>.highlight:first-child>.highlighttable>tbody>tr>.linenos{border-top-left-radius:0;border-top-right-radius:0;margin:0}.md-typeset .tabbed-block>.highlight:first-child>.highlighttable>tbody>tr>.code>div>pre>code{border-top-left-radius:0;border-top-right-radius:0}.md-typeset .tabbed-block>.highlight:first-child+.result{margin-top:-.125em}.md-typeset .tabbed-block>.tabbed-set{margin:0}.md-typeset .tabbed-button{align-self:center;border-radius:100%;color:var(--md-default-fg-color--light);cursor:pointer;display:block;height:.9rem;margin-top:.1rem;pointer-events:auto;transition:background-color .25s;width:.9rem}.md-typeset .tabbed-button:hover{background-color:var(--md-accent-fg-color--transparent);color:var(--md-accent-fg-color)}.md-typeset .tabbed-button:after{background-color:currentcolor;content:"";display:block;height:100%;-webkit-mask-image:var(--md-tabbed-icon--prev);mask-image:var(--md-tabbed-icon--prev);-webkit-mask-position:center;mask-position:center;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-size:contain;mask-size:contain;transition:background-color .25s,transform .25s;width:100%}.md-typeset .tabbed-control{background:linear-gradient(to right,var(--md-default-bg-color) 60%,#0000);display:flex;height:1.9rem;justify-content:start;pointer-events:none;position:absolute;transition:opacity 125ms;width:1.2rem}[dir=rtl] .md-typeset .tabbed-control{transform:rotate(180deg)}.md-typeset .tabbed-control[hidden]{opacity:0}.md-typeset .tabbed-control--next{background:linear-gradient(to left,var(--md-default-bg-color) 60%,#0000);justify-content:end;right:0}.md-typeset .tabbed-control--next .tabbed-button:after{-webkit-mask-image:var(--md-tabbed-icon--next);mask-image:var(--md-tabbed-icon--next)}@media screen and (max-width:44.984375em){[dir=ltr] .md-content__inner>.tabbed-set .tabbed-labels{padding-left:.8rem}[dir=rtl] .md-content__inner>.tabbed-set .tabbed-labels{padding-right:.8rem}.md-content__inner>.tabbed-set .tabbed-labels{margin:0 -.8rem;max-width:100vw;scroll-padding-inline-start:.8rem}[dir=ltr] .md-content__inner>.tabbed-set .tabbed-labels:after{padding-right:.8rem}[dir=rtl] .md-content__inner>.tabbed-set .tabbed-labels:after{padding-left:.8rem}.md-content__inner>.tabbed-set .tabbed-labels:after{content:""}[dir=ltr] .md-content__inner>.tabbed-set .tabbed-labels~.tabbed-control--prev{padding-left:.8rem}[dir=rtl] .md-content__inner>.tabbed-set .tabbed-labels~.tabbed-control--prev{padding-right:.8rem}[dir=ltr] .md-content__inner>.tabbed-set .tabbed-labels~.tabbed-control--prev{margin-left:-.8rem}[dir=rtl] .md-content__inner>.tabbed-set .tabbed-labels~.tabbed-control--prev{margin-right:-.8rem}.md-content__inner>.tabbed-set .tabbed-labels~.tabbed-control--prev{width:2rem}[dir=ltr] .md-content__inner>.tabbed-set .tabbed-labels~.tabbed-control--next{padding-right:.8rem}[dir=rtl] .md-content__inner>.tabbed-set .tabbed-labels~.tabbed-control--next{padding-left:.8rem}[dir=ltr] .md-content__inner>.tabbed-set .tabbed-labels~.tabbed-control--next{margin-right:-.8rem}[dir=rtl] .md-content__inner>.tabbed-set .tabbed-labels~.tabbed-control--next{margin-left:-.8rem}.md-content__inner>.tabbed-set .tabbed-labels~.tabbed-control--next{width:2rem}}@media screen{.md-typeset .tabbed-set>input:first-child:checked~.tabbed-labels>:first-child,.md-typeset .tabbed-set>input:nth-child(10):checked~.tabbed-labels>:nth-child(10),.md-typeset .tabbed-set>input:nth-child(11):checked~.tabbed-labels>:nth-child(11),.md-typeset .tabbed-set>input:nth-child(12):checked~.tabbed-labels>:nth-child(12),.md-typeset .tabbed-set>input:nth-child(13):checked~.tabbed-labels>:nth-child(13),.md-typeset .tabbed-set>input:nth-child(14):checked~.tabbed-labels>:nth-child(14),.md-typeset .tabbed-set>input:nth-child(15):checked~.tabbed-labels>:nth-child(15),.md-typeset .tabbed-set>input:nth-child(16):checked~.tabbed-labels>:nth-child(16),.md-typeset .tabbed-set>input:nth-child(17):checked~.tabbed-labels>:nth-child(17),.md-typeset .tabbed-set>input:nth-child(18):checked~.tabbed-labels>:nth-child(18),.md-typeset .tabbed-set>input:nth-child(19):checked~.tabbed-labels>:nth-child(19),.md-typeset .tabbed-set>input:nth-child(2):checked~.tabbed-labels>:nth-child(2),.md-typeset .tabbed-set>input:nth-child(20):checked~.tabbed-labels>:nth-child(20),.md-typeset .tabbed-set>input:nth-child(3):checked~.tabbed-labels>:nth-child(3),.md-typeset .tabbed-set>input:nth-child(4):checked~.tabbed-labels>:nth-child(4),.md-typeset .tabbed-set>input:nth-child(5):checked~.tabbed-labels>:nth-child(5),.md-typeset .tabbed-set>input:nth-child(6):checked~.tabbed-labels>:nth-child(6),.md-typeset .tabbed-set>input:nth-child(7):checked~.tabbed-labels>:nth-child(7),.md-typeset .tabbed-set>input:nth-child(8):checked~.tabbed-labels>:nth-child(8),.md-typeset .tabbed-set>input:nth-child(9):checked~.tabbed-labels>:nth-child(9){color:var(--md-default-fg-color)}.md-typeset .no-js .tabbed-set>input:first-child:checked~.tabbed-labels>:first-child,.md-typeset .no-js .tabbed-set>input:nth-child(10):checked~.tabbed-labels>:nth-child(10),.md-typeset .no-js .tabbed-set>input:nth-child(11):checked~.tabbed-labels>:nth-child(11),.md-typeset .no-js .tabbed-set>input:nth-child(12):checked~.tabbed-labels>:nth-child(12),.md-typeset .no-js .tabbed-set>input:nth-child(13):checked~.tabbed-labels>:nth-child(13),.md-typeset .no-js .tabbed-set>input:nth-child(14):checked~.tabbed-labels>:nth-child(14),.md-typeset .no-js .tabbed-set>input:nth-child(15):checked~.tabbed-labels>:nth-child(15),.md-typeset .no-js .tabbed-set>input:nth-child(16):checked~.tabbed-labels>:nth-child(16),.md-typeset .no-js .tabbed-set>input:nth-child(17):checked~.tabbed-labels>:nth-child(17),.md-typeset .no-js .tabbed-set>input:nth-child(18):checked~.tabbed-labels>:nth-child(18),.md-typeset .no-js .tabbed-set>input:nth-child(19):checked~.tabbed-labels>:nth-child(19),.md-typeset .no-js .tabbed-set>input:nth-child(2):checked~.tabbed-labels>:nth-child(2),.md-typeset .no-js .tabbed-set>input:nth-child(20):checked~.tabbed-labels>:nth-child(20),.md-typeset .no-js .tabbed-set>input:nth-child(3):checked~.tabbed-labels>:nth-child(3),.md-typeset .no-js .tabbed-set>input:nth-child(4):checked~.tabbed-labels>:nth-child(4),.md-typeset .no-js .tabbed-set>input:nth-child(5):checked~.tabbed-labels>:nth-child(5),.md-typeset .no-js .tabbed-set>input:nth-child(6):checked~.tabbed-labels>:nth-child(6),.md-typeset .no-js .tabbed-set>input:nth-child(7):checked~.tabbed-labels>:nth-child(7),.md-typeset .no-js .tabbed-set>input:nth-child(8):checked~.tabbed-labels>:nth-child(8),.md-typeset .no-js .tabbed-set>input:nth-child(9):checked~.tabbed-labels>:nth-child(9),.md-typeset [role=dialog] .tabbed-set>input:first-child:checked~.tabbed-labels>:first-child,.md-typeset [role=dialog] .tabbed-set>input:nth-child(10):checked~.tabbed-labels>:nth-child(10),.md-typeset [role=dialog] .tabbed-set>input:nth-child(11):checked~.tabbed-labels>:nth-child(11),.md-typeset [role=dialog] .tabbed-set>input:nth-child(12):checked~.tabbed-labels>:nth-child(12),.md-typeset [role=dialog] .tabbed-set>input:nth-child(13):checked~.tabbed-labels>:nth-child(13),.md-typeset [role=dialog] .tabbed-set>input:nth-child(14):checked~.tabbed-labels>:nth-child(14),.md-typeset [role=dialog] .tabbed-set>input:nth-child(15):checked~.tabbed-labels>:nth-child(15),.md-typeset [role=dialog] .tabbed-set>input:nth-child(16):checked~.tabbed-labels>:nth-child(16),.md-typeset [role=dialog] .tabbed-set>input:nth-child(17):checked~.tabbed-labels>:nth-child(17),.md-typeset [role=dialog] .tabbed-set>input:nth-child(18):checked~.tabbed-labels>:nth-child(18),.md-typeset [role=dialog] .tabbed-set>input:nth-child(19):checked~.tabbed-labels>:nth-child(19),.md-typeset [role=dialog] .tabbed-set>input:nth-child(2):checked~.tabbed-labels>:nth-child(2),.md-typeset [role=dialog] .tabbed-set>input:nth-child(20):checked~.tabbed-labels>:nth-child(20),.md-typeset [role=dialog] .tabbed-set>input:nth-child(3):checked~.tabbed-labels>:nth-child(3),.md-typeset [role=dialog] .tabbed-set>input:nth-child(4):checked~.tabbed-labels>:nth-child(4),.md-typeset [role=dialog] .tabbed-set>input:nth-child(5):checked~.tabbed-labels>:nth-child(5),.md-typeset [role=dialog] .tabbed-set>input:nth-child(6):checked~.tabbed-labels>:nth-child(6),.md-typeset [role=dialog] .tabbed-set>input:nth-child(7):checked~.tabbed-labels>:nth-child(7),.md-typeset [role=dialog] .tabbed-set>input:nth-child(8):checked~.tabbed-labels>:nth-child(8),.md-typeset [role=dialog] .tabbed-set>input:nth-child(9):checked~.tabbed-labels>:nth-child(9),.no-js .md-typeset .tabbed-set>input:first-child:checked~.tabbed-labels>:first-child,.no-js .md-typeset .tabbed-set>input:nth-child(10):checked~.tabbed-labels>:nth-child(10),.no-js .md-typeset .tabbed-set>input:nth-child(11):checked~.tabbed-labels>:nth-child(11),.no-js .md-typeset .tabbed-set>input:nth-child(12):checked~.tabbed-labels>:nth-child(12),.no-js .md-typeset .tabbed-set>input:nth-child(13):checked~.tabbed-labels>:nth-child(13),.no-js .md-typeset .tabbed-set>input:nth-child(14):checked~.tabbed-labels>:nth-child(14),.no-js .md-typeset .tabbed-set>input:nth-child(15):checked~.tabbed-labels>:nth-child(15),.no-js .md-typeset .tabbed-set>input:nth-child(16):checked~.tabbed-labels>:nth-child(16),.no-js .md-typeset .tabbed-set>input:nth-child(17):checked~.tabbed-labels>:nth-child(17),.no-js .md-typeset .tabbed-set>input:nth-child(18):checked~.tabbed-labels>:nth-child(18),.no-js .md-typeset .tabbed-set>input:nth-child(19):checked~.tabbed-labels>:nth-child(19),.no-js .md-typeset .tabbed-set>input:nth-child(2):checked~.tabbed-labels>:nth-child(2),.no-js .md-typeset .tabbed-set>input:nth-child(20):checked~.tabbed-labels>:nth-child(20),.no-js .md-typeset .tabbed-set>input:nth-child(3):checked~.tabbed-labels>:nth-child(3),.no-js .md-typeset .tabbed-set>input:nth-child(4):checked~.tabbed-labels>:nth-child(4),.no-js .md-typeset .tabbed-set>input:nth-child(5):checked~.tabbed-labels>:nth-child(5),.no-js .md-typeset .tabbed-set>input:nth-child(6):checked~.tabbed-labels>:nth-child(6),.no-js .md-typeset .tabbed-set>input:nth-child(7):checked~.tabbed-labels>:nth-child(7),.no-js .md-typeset .tabbed-set>input:nth-child(8):checked~.tabbed-labels>:nth-child(8),.no-js .md-typeset .tabbed-set>input:nth-child(9):checked~.tabbed-labels>:nth-child(9),[role=dialog] .md-typeset .tabbed-set>input:first-child:checked~.tabbed-labels>:first-child,[role=dialog] .md-typeset .tabbed-set>input:nth-child(10):checked~.tabbed-labels>:nth-child(10),[role=dialog] .md-typeset .tabbed-set>input:nth-child(11):checked~.tabbed-labels>:nth-child(11),[role=dialog] .md-typeset .tabbed-set>input:nth-child(12):checked~.tabbed-labels>:nth-child(12),[role=dialog] .md-typeset .tabbed-set>input:nth-child(13):checked~.tabbed-labels>:nth-child(13),[role=dialog] .md-typeset .tabbed-set>input:nth-child(14):checked~.tabbed-labels>:nth-child(14),[role=dialog] .md-typeset .tabbed-set>input:nth-child(15):checked~.tabbed-labels>:nth-child(15),[role=dialog] .md-typeset .tabbed-set>input:nth-child(16):checked~.tabbed-labels>:nth-child(16),[role=dialog] .md-typeset .tabbed-set>input:nth-child(17):checked~.tabbed-labels>:nth-child(17),[role=dialog] .md-typeset .tabbed-set>input:nth-child(18):checked~.tabbed-labels>:nth-child(18),[role=dialog] .md-typeset .tabbed-set>input:nth-child(19):checked~.tabbed-labels>:nth-child(19),[role=dialog] .md-typeset .tabbed-set>input:nth-child(2):checked~.tabbed-labels>:nth-child(2),[role=dialog] .md-typeset .tabbed-set>input:nth-child(20):checked~.tabbed-labels>:nth-child(20),[role=dialog] .md-typeset .tabbed-set>input:nth-child(3):checked~.tabbed-labels>:nth-child(3),[role=dialog] .md-typeset .tabbed-set>input:nth-child(4):checked~.tabbed-labels>:nth-child(4),[role=dialog] .md-typeset .tabbed-set>input:nth-child(5):checked~.tabbed-labels>:nth-child(5),[role=dialog] .md-typeset .tabbed-set>input:nth-child(6):checked~.tabbed-labels>:nth-child(6),[role=dialog] .md-typeset .tabbed-set>input:nth-child(7):checked~.tabbed-labels>:nth-child(7),[role=dialog] .md-typeset .tabbed-set>input:nth-child(8):checked~.tabbed-labels>:nth-child(8),[role=dialog] .md-typeset .tabbed-set>input:nth-child(9):checked~.tabbed-labels>:nth-child(9){border-color:var(--md-default-fg-color)}}.md-typeset .tabbed-set>input:first-child.focus-visible~.tabbed-labels>:first-child,.md-typeset .tabbed-set>input:nth-child(10).focus-visible~.tabbed-labels>:nth-child(10),.md-typeset .tabbed-set>input:nth-child(11).focus-visible~.tabbed-labels>:nth-child(11),.md-typeset .tabbed-set>input:nth-child(12).focus-visible~.tabbed-labels>:nth-child(12),.md-typeset .tabbed-set>input:nth-child(13).focus-visible~.tabbed-labels>:nth-child(13),.md-typeset .tabbed-set>input:nth-child(14).focus-visible~.tabbed-labels>:nth-child(14),.md-typeset .tabbed-set>input:nth-child(15).focus-visible~.tabbed-labels>:nth-child(15),.md-typeset .tabbed-set>input:nth-child(16).focus-visible~.tabbed-labels>:nth-child(16),.md-typeset .tabbed-set>input:nth-child(17).focus-visible~.tabbed-labels>:nth-child(17),.md-typeset .tabbed-set>input:nth-child(18).focus-visible~.tabbed-labels>:nth-child(18),.md-typeset .tabbed-set>input:nth-child(19).focus-visible~.tabbed-labels>:nth-child(19),.md-typeset .tabbed-set>input:nth-child(2).focus-visible~.tabbed-labels>:nth-child(2),.md-typeset .tabbed-set>input:nth-child(20).focus-visible~.tabbed-labels>:nth-child(20),.md-typeset .tabbed-set>input:nth-child(3).focus-visible~.tabbed-labels>:nth-child(3),.md-typeset .tabbed-set>input:nth-child(4).focus-visible~.tabbed-labels>:nth-child(4),.md-typeset .tabbed-set>input:nth-child(5).focus-visible~.tabbed-labels>:nth-child(5),.md-typeset .tabbed-set>input:nth-child(6).focus-visible~.tabbed-labels>:nth-child(6),.md-typeset .tabbed-set>input:nth-child(7).focus-visible~.tabbed-labels>:nth-child(7),.md-typeset .tabbed-set>input:nth-child(8).focus-visible~.tabbed-labels>:nth-child(8),.md-typeset .tabbed-set>input:nth-child(9).focus-visible~.tabbed-labels>:nth-child(9){color:var(--md-accent-fg-color)}.md-typeset .tabbed-set>input:first-child:checked~.tabbed-content>:first-child,.md-typeset .tabbed-set>input:nth-child(10):checked~.tabbed-content>:nth-child(10),.md-typeset .tabbed-set>input:nth-child(11):checked~.tabbed-content>:nth-child(11),.md-typeset .tabbed-set>input:nth-child(12):checked~.tabbed-content>:nth-child(12),.md-typeset .tabbed-set>input:nth-child(13):checked~.tabbed-content>:nth-child(13),.md-typeset .tabbed-set>input:nth-child(14):checked~.tabbed-content>:nth-child(14),.md-typeset .tabbed-set>input:nth-child(15):checked~.tabbed-content>:nth-child(15),.md-typeset .tabbed-set>input:nth-child(16):checked~.tabbed-content>:nth-child(16),.md-typeset .tabbed-set>input:nth-child(17):checked~.tabbed-content>:nth-child(17),.md-typeset .tabbed-set>input:nth-child(18):checked~.tabbed-content>:nth-child(18),.md-typeset .tabbed-set>input:nth-child(19):checked~.tabbed-content>:nth-child(19),.md-typeset .tabbed-set>input:nth-child(2):checked~.tabbed-content>:nth-child(2),.md-typeset .tabbed-set>input:nth-child(20):checked~.tabbed-content>:nth-child(20),.md-typeset .tabbed-set>input:nth-child(3):checked~.tabbed-content>:nth-child(3),.md-typeset .tabbed-set>input:nth-child(4):checked~.tabbed-content>:nth-child(4),.md-typeset .tabbed-set>input:nth-child(5):checked~.tabbed-content>:nth-child(5),.md-typeset .tabbed-set>input:nth-child(6):checked~.tabbed-content>:nth-child(6),.md-typeset .tabbed-set>input:nth-child(7):checked~.tabbed-content>:nth-child(7),.md-typeset .tabbed-set>input:nth-child(8):checked~.tabbed-content>:nth-child(8),.md-typeset .tabbed-set>input:nth-child(9):checked~.tabbed-content>:nth-child(9){display:block}:root{--md-tasklist-icon:url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M1 12C1 5.925 5.925 1 12 1s11 4.925 11 11-4.925 11-11 11S1 18.075 1 12m16.28-2.72a.75.75 0 0 0-.018-1.042.75.75 0 0 0-1.042-.018l-5.97 5.97-2.47-2.47a.75.75 0 0 0-1.042.018.75.75 0 0 0-.018 1.042l3 3a.75.75 0 0 0 1.06 0Z"/></svg>');--md-tasklist-icon--checked:url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M1 12C1 5.925 5.925 1 12 1s11 4.925 11 11-4.925 11-11 11S1 18.075 1 12m16.28-2.72a.75.75 0 0 0-.018-1.042.75.75 0 0 0-1.042-.018l-5.97 5.97-2.47-2.47a.75.75 0 0 0-1.042.018.75.75 0 0 0-.018 1.042l3 3a.75.75 0 0 0 1.06 0Z"/></svg>')}.md-typeset .task-list-item{list-style-type:none;position:relative}[dir=ltr] .md-typeset .task-list-item [type=checkbox]{left:-2em}[dir=rtl] .md-typeset .task-list-item [type=checkbox]{right:-2em}.md-typeset .task-list-item [type=checkbox]{position:absolute;top:.45em}.md-typeset .task-list-control [type=checkbox]{opacity:0;z-index:-1}[dir=ltr] .md-typeset .task-list-indicator:before{left:-1.5em}[dir=rtl] .md-typeset .task-list-indicator:before{right:-1.5em}.md-typeset .task-list-indicator:before{background-color:var(--md-default-fg-color--lightest);content:"";height:1.25em;-webkit-mask-image:var(--md-tasklist-icon);mask-image:var(--md-tasklist-icon);-webkit-mask-position:center;mask-position:center;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-size:contain;mask-size:contain;position:absolute;top:.15em;width:1.25em}.md-typeset [type=checkbox]:checked+.task-list-indicator:before{background-color:#00e676;-webkit-mask-image:var(--md-tasklist-icon--checked);mask-image:var(--md-tasklist-icon--checked)}:root>*{--md-mermaid-font-family:var(--md-text-font-family),sans-serif;--md-mermaid-edge-color:var(--md-code-fg-color);--md-mermaid-node-bg-color:var(--md-accent-fg-color--transparent);--md-mermaid-node-fg-color:var(--md-accent-fg-color);--md-mermaid-label-bg-color:var(--md-default-bg-color);--md-mermaid-label-fg-color:var(--md-code-fg-color);--md-mermaid-sequence-actor-bg-color:var(--md-mermaid-label-bg-color);--md-mermaid-sequence-actor-fg-color:var(--md-mermaid-label-fg-color);--md-mermaid-sequence-actor-border-color:var(--md-mermaid-node-fg-color);--md-mermaid-sequence-actor-line-color:var(--md-default-fg-color--lighter);--md-mermaid-sequence-actorman-bg-color:var(--md-mermaid-label-bg-color);--md-mermaid-sequence-actorman-line-color:var(--md-mermaid-node-fg-color);--md-mermaid-sequence-box-bg-color:var(--md-mermaid-node-bg-color);--md-mermaid-sequence-box-fg-color:var(--md-mermaid-edge-color);--md-mermaid-sequence-label-bg-color:var(--md-mermaid-node-bg-color);--md-mermaid-sequence-label-fg-color:var(--md-mermaid-node-fg-color);--md-mermaid-sequence-loop-bg-color:var(--md-mermaid-node-bg-color);--md-mermaid-sequence-loop-fg-color:var(--md-mermaid-edge-color);--md-mermaid-sequence-loop-border-color:var(--md-mermaid-node-fg-color);--md-mermaid-sequence-message-fg-color:var(--md-mermaid-edge-color);--md-mermaid-sequence-message-line-color:var(--md-mermaid-edge-color);--md-mermaid-sequence-note-bg-color:var(--md-mermaid-label-bg-color);--md-mermaid-sequence-note-fg-color:var(--md-mermaid-edge-color);--md-mermaid-sequence-note-border-color:var(--md-mermaid-label-fg-color);--md-mermaid-sequence-number-bg-color:var(--md-mermaid-node-fg-color);--md-mermaid-sequence-number-fg-color:var(--md-accent-bg-color)}.md-typeset .grid{grid-gap:.4rem;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr));margin:1em 0}.md-typeset .grid.cards>ol,.md-typeset .grid.cards>ul{display:contents}.md-typeset .grid.cards>ol>li,.md-typeset .grid.cards>ul>li,.md-typeset .grid>.card{border:.05rem solid var(--md-default-fg-color--lightest);border-radius:.1rem;display:block;margin:0;padding:.8rem;transition:border .25s,box-shadow .25s}.md-typeset .grid.cards>ol>li:focus-within,.md-typeset .grid.cards>ol>li:hover,.md-typeset .grid.cards>ul>li:focus-within,.md-typeset .grid.cards>ul>li:hover,.md-typeset .grid>.card:focus-within,.md-typeset .grid>.card:hover{border-color:#0000;box-shadow:var(--md-shadow-z2)}.md-typeset .grid.cards>ol>li>hr,.md-typeset .grid.cards>ul>li>hr,.md-typeset .grid>.card>hr{margin-bottom:1em;margin-top:1em}.md-typeset .grid.cards>ol>li>:first-child,.md-typeset .grid.cards>ul>li>:first-child,.md-typeset .grid>.card>:first-child{margin-top:0}.md-typeset .grid.cards>ol>li>:last-child,.md-typeset .grid.cards>ul>li>:last-child,.md-typeset .grid>.card>:last-child{margin-bottom:0}.md-typeset .grid>*,.md-typeset .grid>.admonition,.md-typeset .grid>.highlight>*,.md-typeset .grid>.highlighttable,.md-typeset .grid>.md-typeset details,.md-typeset .grid>details,.md-typeset .grid>pre{margin-bottom:0;margin-top:0}.md-typeset .grid>.highlight>pre:only-child,.md-typeset .grid>.highlight>pre>code,.md-typeset .grid>.highlighttable,.md-typeset .grid>.highlighttable>tbody,.md-typeset .grid>.highlighttable>tbody>tr,.md-typeset .grid>.highlighttable>tbody>tr>.code,.md-typeset .grid>.highlighttable>tbody>tr>.code>.highlight,.md-typeset .grid>.highlighttable>tbody>tr>.code>.highlight>pre,.md-typeset .grid>.highlighttable>tbody>tr>.code>.highlight>pre>code{height:100%}.md-typeset .grid>.tabbed-set{margin-bottom:0;margin-top:0}@media screen and (min-width:45em){[dir=ltr] .md-typeset .inline{float:left}[dir=rtl] .md-typeset .inline{float:right}[dir=ltr] .md-typeset .inline{margin-right:.8rem}[dir=rtl] .md-typeset .inline{margin-left:.8rem}.md-typeset .inline{margin-bottom:.8rem;margin-top:0;width:11.7rem}[dir=ltr] .md-typeset .inline.end{float:right}[dir=rtl] .md-typeset .inline.end{float:left}[dir=ltr] .md-typeset .inline.end{margin-left:.8rem;margin-right:0}[dir=rtl] .md-typeset .inline.end{margin-left:0;margin-right:.8rem}}@media screen and (max-width:76.234375em){html [data-md-color-primary=black] .md-nav--primary .md-nav__title[for=__drawer]{background-color:hsla(var(--md-hue),15%,9%,1)}}
+
+.md-typeset .grid { display: block; }
+.md-typeset .grid.cards > ol,
+.md-typeset .grid.cards > ul { display: block; }
+.md-typeset .grid > .card,
+.md-typeset .grid.cards > ol > li,
+.md-typeset .grid.cards > ul > li { break-inside: avoid; margin: 0 0 0.4rem; }
+.md-typeset pre > code,
+.md-typeset .highlight,
+.md-typeset .highlighttable { overflow: visible; }
+.md-typeset .tabbed-set { display: block; }
+.md-typeset .tabbed-labels { display: block; overflow: visible; }
+.md-typeset .tabbed-content { display: block; }
+.md-typeset .tabbed-block { display: block; }
+
+    
+
+  .md-typeset .admonition.classic {
+    border-width: 0;
+    border-left-width: 4px;
+  }
+
+
+  :root {
+    --md-admonition-icon--pied-piper: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><path d="M244 246c-3.2-2-6.3-2.9-10.1-2.9-6.6 0-12.6 3.2-19.3 3.7l1.7 4.9zm135.9 197.9c-19 0-64.1 9.5-79.9 19.8l6.9 45.1c35.7 6.1 70.1 3.6 106-9.8-4.8-10-23.5-55.1-33-55.1zM340.8 177c6.6 2.8 11.5 9.2 22.7 22.1 2-1.4 7.5-5.2 7.5-8.6 0-4.9-11.8-13.2-13.2-23 11.2-5.7 25.2-6 37.6-8.9 68.1-16.4 116.3-52.9 146.8-116.7C548.3 29.3 554 16.1 554.6 2l-2 2.6c-28.4 50-33 63.2-81.3 100-31.9 24.4-69.2 40.2-106.6 54.6l-6.3-.3v-21.8c-19.6 1.6-19.7-14.6-31.6-23-18.7 20.6-31.6 40.8-58.9 51.1-12.7 4.8-19.6 10-25.9 21.8 34.9-16.4 91.2-13.5 98.8-10zM555.5 0l-.6 1.1-.3.9.6-.6zm-59.2 382.1c-33.9-56.9-75.3-118.4-150-115.5l-.3-6c-1.1-13.5 32.8 3.2 35.1-31l-14.4 7.2c-19.8-45.7-8.6-54.3-65.5-54.3-14.7 0-26.7 1.7-41.4 4.6 2.9 18.6 2.2 36.7-10.9 50.3l19.5 5.5c-1.7 3.2-2.9 6.3-2.9 9.8 0 21 42.8 2.9 42.8 33.6 0 18.4-36.8 60.1-54.9 60.1-8 0-53.7-50-53.4-60.1l.3-4.6 52.3-11.5c13-2.6 12.3-22.7-2.9-22.7-3.7 0-43.1 9.2-49.4 10.6-2-5.2-7.5-14.1-13.8-14.1-3.2 0-6.3 3.2-9.5 4-9.2 2.6-31 2.9-21.5 20.1L15.9 298.5c-5.5 1.1-8.9 6.3-8.9 11.8 0 6 5.5 10.9 11.5 10.9 8 0 131.3-28.4 147.4-32.2 2.6 3.2 4.6 6.3 7.8 8.6 20.1 14.4 59.8 85.9 76.4 85.9 24.1 0 58-22.4 71.3-41.9 3.2-4.3 6.9-7.5 12.4-6.9.6 13.8-31.6 34.2-33 43.7-1.4 10.2-1 35.2-.3 41.1 26.7 8.1 52-3.6 77.9-2.9 4.3-21 10.6-41.9 9.8-63.5l-.3-9.5c-1.4-34.2-10.9-38.5-34.8-58.6-1.1-1.1-2.6-2.6-3.7-4 2.2-1.4 1.1-1 4.6-1.7 88.5 0 56.3 183.6 111.5 229.9 33.1-15 72.5-27.9 103.5-47.2-29-25.6-52.6-45.7-72.7-79.9zm-196.2 46.1v27.2l11.8-3.4-2.9-23.8zm-68.7-150.4l24.1 61.2 21-13.8-31.3-50.9zm84.4 154.9l2 12.4c9-1.5 58.4-6.6 58.4-14.1 0-1.4-.6-3.2-.9-4.6-26.8 0-36.9 3.8-59.5 6.3z"/></svg>')
+  }
+  .md-typeset .admonition.pied-piper,
+  .md-typeset details.pied-piper {
+    border-color: rgb(43, 155, 70);
+  }
+  .md-typeset .pied-piper > .admonition-title,
+  .md-typeset .pied-piper > summary {
+    background-color: rgba(43, 155, 70, 0.1);
+  }
+  .md-typeset .pied-piper > .admonition-title::before,
+  .md-typeset .pied-piper > summary::before {
+    background-color: rgb(43, 155, 70);
+    -webkit-mask-image: var(--md-admonition-icon--pied-piper);
+            mask-image: var(--md-admonition-icon--pied-piper);
+  }</style>
+</head>
+<body>
+<article class="print-manual">
+<section id="repro" class="print-chapter print-chapter--level-1 print-chapter--top-level" data-source-path="reference/grids/index.html">
+<div><article class="md-content__inner md-typeset">
+<h1 class="print-chapter-title print-chapter-title--level-1 print-chapter-title--top-level">Grids</h1><p>Filler F1.0 keeps successive blocks starting at a different offset down the page so a boundary lands inside one of the lists. </p><p>Filler F1.1 keeps successive blocks starting at a different offset down the page so a boundary lands inside one of the lists. </p><div class="result"> <div class="grid"> <div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked id="ul1" name="__tabbed_1" type="radio"><input id="ol1" name="__tabbed_1" type="radio"><div class="tabbed-labels"><label for="ul1">Unordered list</label><label for="ol1">Ordered list</label></div> <div class="tabbed-content"> <div class="tabbed-block"> <ul> <li>SEDA1 sagittis eleifend rutrum</li> <li>DONA1 vitae suscipit est</li> <li>NULA1 tempor lobortis orci</li> </ul> </div> <div class="tabbed-block"> <ol> <li>SEDB1 sagittis eleifend rutrum</li> <li>DONB1 vitae suscipit est</li> <li>NULB1 tempor lobortis orci</li> </ol> </div> </div> </div> <div class="language-text highlight"><span class="filename">Content tabs</span><pre><span></span><code><span id="doc-reference--grids--__span-5-1"><a id="doc-reference--grids--__codelineno-5-1" name="__codelineno-5-1" href="#doc-reference--grids--__codelineno-5-1"></a>=== "Unordered list"
+</span><span id="doc-reference--grids--__span-5-2"><a id="doc-reference--grids--__codelineno-5-2" name="__codelineno-5-2" href="#doc-reference--grids--__codelineno-5-2"></a>
+</span><span id="doc-reference--grids--__span-5-3"><a id="doc-reference--grids--__codelineno-5-3" name="__codelineno-5-3" href="#doc-reference--grids--__codelineno-5-3"></a>    * Sed sagittis eleifend rutrum
+</span><span id="doc-reference--grids--__span-5-4"><a id="doc-reference--grids--__codelineno-5-4" name="__codelineno-5-4" href="#doc-reference--grids--__codelineno-5-4"></a>    * Donec vitae suscipit est
+</span><span id="doc-reference--grids--__span-5-5"><a id="doc-reference--grids--__codelineno-5-5" name="__codelineno-5-5" href="#doc-reference--grids--__codelineno-5-5"></a>    * Nulla tempor lobortis orci
+</span><span id="doc-reference--grids--__span-5-6"><a id="doc-reference--grids--__codelineno-5-6" name="__codelineno-5-6" href="#doc-reference--grids--__codelineno-5-6"></a>
+</span><span id="doc-reference--grids--__span-5-7"><a id="doc-reference--grids--__codelineno-5-7" name="__codelineno-5-7" href="#doc-reference--grids--__codelineno-5-7"></a>=== "Ordered list"
+</span><span id="doc-reference--grids--__span-5-8"><a id="doc-reference--grids--__codelineno-5-8" name="__codelineno-5-8" href="#doc-reference--grids--__codelineno-5-8"></a>
+</span><span id="doc-reference--grids--__span-5-9"><a id="doc-reference--grids--__codelineno-5-9" name="__codelineno-5-9" href="#doc-reference--grids--__codelineno-5-9"></a>    1. Sed sagittis eleifend rutrum
+</span><span id="doc-reference--grids--__span-5-10"><a id="doc-reference--grids--__codelineno-5-10" name="__codelineno-5-10" href="#doc-reference--grids--__codelineno-5-10"></a>    2. Donec vitae suscipit est
+</span><span id="doc-reference--grids--__span-5-11"><a id="doc-reference--grids--__codelineno-5-11" name="__codelineno-5-11" href="#doc-reference--grids--__codelineno-5-11"></a>    3. Nulla tempor lobortis orci
+</span></code></pre></div> </div> </div><p>Filler F2.0 keeps successive blocks starting at a different offset down the page so a boundary lands inside one of the lists. </p><p>Filler F2.1 keeps successive blocks starting at a different offset down the page so a boundary lands inside one of the lists. </p><p>Filler F2.2 keeps successive blocks starting at a different offset down the page so a boundary lands inside one of the lists. </p><div class="result"> <div class="grid"> <div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked id="ul2" name="__tabbed_2" type="radio"><input id="ol2" name="__tabbed_2" type="radio"><div class="tabbed-labels"><label for="ul2">Unordered list</label><label for="ol2">Ordered list</label></div> <div class="tabbed-content"> <div class="tabbed-block"> <ul> <li>SEDA2 sagittis eleifend rutrum</li> <li>DONA2 vitae suscipit est</li> <li>NULA2 tempor lobortis orci</li> </ul> </div> <div class="tabbed-block"> <ol> <li>SEDB2 sagittis eleifend rutrum</li> <li>DONB2 vitae suscipit est</li> <li>NULB2 tempor lobortis orci</li> </ol> </div> </div> </div> <div class="language-text highlight"><span class="filename">Content tabs</span><pre><span></span><code><span id="doc-reference--grids--__span-5-1"><a id="doc-reference--grids--__codelineno-5-1" name="__codelineno-5-1" href="#doc-reference--grids--__codelineno-5-1"></a>=== "Unordered list"
+</span><span id="doc-reference--grids--__span-5-2"><a id="doc-reference--grids--__codelineno-5-2" name="__codelineno-5-2" href="#doc-reference--grids--__codelineno-5-2"></a>
+</span><span id="doc-reference--grids--__span-5-3"><a id="doc-reference--grids--__codelineno-5-3" name="__codelineno-5-3" href="#doc-reference--grids--__codelineno-5-3"></a>    * Sed sagittis eleifend rutrum
+</span><span id="doc-reference--grids--__span-5-4"><a id="doc-reference--grids--__codelineno-5-4" name="__codelineno-5-4" href="#doc-reference--grids--__codelineno-5-4"></a>    * Donec vitae suscipit est
+</span><span id="doc-reference--grids--__span-5-5"><a id="doc-reference--grids--__codelineno-5-5" name="__codelineno-5-5" href="#doc-reference--grids--__codelineno-5-5"></a>    * Nulla tempor lobortis orci
+</span><span id="doc-reference--grids--__span-5-6"><a id="doc-reference--grids--__codelineno-5-6" name="__codelineno-5-6" href="#doc-reference--grids--__codelineno-5-6"></a>
+</span><span id="doc-reference--grids--__span-5-7"><a id="doc-reference--grids--__codelineno-5-7" name="__codelineno-5-7" href="#doc-reference--grids--__codelineno-5-7"></a>=== "Ordered list"
+</span><span id="doc-reference--grids--__span-5-8"><a id="doc-reference--grids--__codelineno-5-8" name="__codelineno-5-8" href="#doc-reference--grids--__codelineno-5-8"></a>
+</span><span id="doc-reference--grids--__span-5-9"><a id="doc-reference--grids--__codelineno-5-9" name="__codelineno-5-9" href="#doc-reference--grids--__codelineno-5-9"></a>    1. Sed sagittis eleifend rutrum
+</span><span id="doc-reference--grids--__span-5-10"><a id="doc-reference--grids--__codelineno-5-10" name="__codelineno-5-10" href="#doc-reference--grids--__codelineno-5-10"></a>    2. Donec vitae suscipit est
+</span><span id="doc-reference--grids--__span-5-11"><a id="doc-reference--grids--__codelineno-5-11" name="__codelineno-5-11" href="#doc-reference--grids--__codelineno-5-11"></a>    3. Nulla tempor lobortis orci
+</span></code></pre></div> </div> </div><p>Filler F3.0 keeps successive blocks starting at a different offset down the page so a boundary lands inside one of the lists. </p><p>Filler F3.1 keeps successive blocks starting at a different offset down the page so a boundary lands inside one of the lists. </p><p>Filler F3.2 keeps successive blocks starting at a different offset down the page so a boundary lands inside one of the lists. </p><p>Filler F3.3 keeps successive blocks starting at a different offset down the page so a boundary lands inside one of the lists. </p><div class="result"> <div class="grid"> <div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked id="ul3" name="__tabbed_3" type="radio"><input id="ol3" name="__tabbed_3" type="radio"><div class="tabbed-labels"><label for="ul3">Unordered list</label><label for="ol3">Ordered list</label></div> <div class="tabbed-content"> <div class="tabbed-block"> <ul> <li>SEDA3 sagittis eleifend rutrum</li> <li>DONA3 vitae suscipit est</li> <li>NULA3 tempor lobortis orci</li> </ul> </div> <div class="tabbed-block"> <ol> <li>SEDB3 sagittis eleifend rutrum</li> <li>DONB3 vitae suscipit est</li> <li>NULB3 tempor lobortis orci</li> </ol> </div> </div> </div> <div class="language-text highlight"><span class="filename">Content tabs</span><pre><span></span><code><span id="doc-reference--grids--__span-5-1"><a id="doc-reference--grids--__codelineno-5-1" name="__codelineno-5-1" href="#doc-reference--grids--__codelineno-5-1"></a>=== "Unordered list"
+</span><span id="doc-reference--grids--__span-5-2"><a id="doc-reference--grids--__codelineno-5-2" name="__codelineno-5-2" href="#doc-reference--grids--__codelineno-5-2"></a>
+</span><span id="doc-reference--grids--__span-5-3"><a id="doc-reference--grids--__codelineno-5-3" name="__codelineno-5-3" href="#doc-reference--grids--__codelineno-5-3"></a>    * Sed sagittis eleifend rutrum
+</span><span id="doc-reference--grids--__span-5-4"><a id="doc-reference--grids--__codelineno-5-4" name="__codelineno-5-4" href="#doc-reference--grids--__codelineno-5-4"></a>    * Donec vitae suscipit est
+</span><span id="doc-reference--grids--__span-5-5"><a id="doc-reference--grids--__codelineno-5-5" name="__codelineno-5-5" href="#doc-reference--grids--__codelineno-5-5"></a>    * Nulla tempor lobortis orci
+</span><span id="doc-reference--grids--__span-5-6"><a id="doc-reference--grids--__codelineno-5-6" name="__codelineno-5-6" href="#doc-reference--grids--__codelineno-5-6"></a>
+</span><span id="doc-reference--grids--__span-5-7"><a id="doc-reference--grids--__codelineno-5-7" name="__codelineno-5-7" href="#doc-reference--grids--__codelineno-5-7"></a>=== "Ordered list"
+</span><span id="doc-reference--grids--__span-5-8"><a id="doc-reference--grids--__codelineno-5-8" name="__codelineno-5-8" href="#doc-reference--grids--__codelineno-5-8"></a>
+</span><span id="doc-reference--grids--__span-5-9"><a id="doc-reference--grids--__codelineno-5-9" name="__codelineno-5-9" href="#doc-reference--grids--__codelineno-5-9"></a>    1. Sed sagittis eleifend rutrum
+</span><span id="doc-reference--grids--__span-5-10"><a id="doc-reference--grids--__codelineno-5-10" name="__codelineno-5-10" href="#doc-reference--grids--__codelineno-5-10"></a>    2. Donec vitae suscipit est
+</span><span id="doc-reference--grids--__span-5-11"><a id="doc-reference--grids--__codelineno-5-11" name="__codelineno-5-11" href="#doc-reference--grids--__codelineno-5-11"></a>    3. Nulla tempor lobortis orci
+</span></code></pre></div> </div> </div><p>Filler F4.0 keeps successive blocks starting at a different offset down the page so a boundary lands inside one of the lists. </p><p>Filler F4.1 keeps successive blocks starting at a different offset down the page so a boundary lands inside one of the lists. </p><p>Filler F4.2 keeps successive blocks starting at a different offset down the page so a boundary lands inside one of the lists. </p><p>Filler F4.3 keeps successive blocks starting at a different offset down the page so a boundary lands inside one of the lists. </p><p>Filler F4.4 keeps successive blocks starting at a different offset down the page so a boundary lands inside one of the lists. </p><div class="result"> <div class="grid"> <div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked id="ul4" name="__tabbed_4" type="radio"><input id="ol4" name="__tabbed_4" type="radio"><div class="tabbed-labels"><label for="ul4">Unordered list</label><label for="ol4">Ordered list</label></div> <div class="tabbed-content"> <div class="tabbed-block"> <ul> <li>SEDA4 sagittis eleifend rutrum</li> <li>DONA4 vitae suscipit est</li> <li>NULA4 tempor lobortis orci</li> </ul> </div> <div class="tabbed-block"> <ol> <li>SEDB4 sagittis eleifend rutrum</li> <li>DONB4 vitae suscipit est</li> <li>NULB4 tempor lobortis orci</li> </ol> </div> </div> </div> <div class="language-text highlight"><span class="filename">Content tabs</span><pre><span></span><code><span id="doc-reference--grids--__span-5-1"><a id="doc-reference--grids--__codelineno-5-1" name="__codelineno-5-1" href="#doc-reference--grids--__codelineno-5-1"></a>=== "Unordered list"
+</span><span id="doc-reference--grids--__span-5-2"><a id="doc-reference--grids--__codelineno-5-2" name="__codelineno-5-2" href="#doc-reference--grids--__codelineno-5-2"></a>
+</span><span id="doc-reference--grids--__span-5-3"><a id="doc-reference--grids--__codelineno-5-3" name="__codelineno-5-3" href="#doc-reference--grids--__codelineno-5-3"></a>    * Sed sagittis eleifend rutrum
+</span><span id="doc-reference--grids--__span-5-4"><a id="doc-reference--grids--__codelineno-5-4" name="__codelineno-5-4" href="#doc-reference--grids--__codelineno-5-4"></a>    * Donec vitae suscipit est
+</span><span id="doc-reference--grids--__span-5-5"><a id="doc-reference--grids--__codelineno-5-5" name="__codelineno-5-5" href="#doc-reference--grids--__codelineno-5-5"></a>    * Nulla tempor lobortis orci
+</span><span id="doc-reference--grids--__span-5-6"><a id="doc-reference--grids--__codelineno-5-6" name="__codelineno-5-6" href="#doc-reference--grids--__codelineno-5-6"></a>
+</span><span id="doc-reference--grids--__span-5-7"><a id="doc-reference--grids--__codelineno-5-7" name="__codelineno-5-7" href="#doc-reference--grids--__codelineno-5-7"></a>=== "Ordered list"
+</span><span id="doc-reference--grids--__span-5-8"><a id="doc-reference--grids--__codelineno-5-8" name="__codelineno-5-8" href="#doc-reference--grids--__codelineno-5-8"></a>
+</span><span id="doc-reference--grids--__span-5-9"><a id="doc-reference--grids--__codelineno-5-9" name="__codelineno-5-9" href="#doc-reference--grids--__codelineno-5-9"></a>    1. Sed sagittis eleifend rutrum
+</span><span id="doc-reference--grids--__span-5-10"><a id="doc-reference--grids--__codelineno-5-10" name="__codelineno-5-10" href="#doc-reference--grids--__codelineno-5-10"></a>    2. Donec vitae suscipit est
+</span><span id="doc-reference--grids--__span-5-11"><a id="doc-reference--grids--__codelineno-5-11" name="__codelineno-5-11" href="#doc-reference--grids--__codelineno-5-11"></a>    3. Nulla tempor lobortis orci
+</span></code></pre></div> </div> </div><p>Filler F5.0 keeps successive blocks starting at a different offset down the page so a boundary lands inside one of the lists. </p><p>Filler F5.1 keeps successive blocks starting at a different offset down the page so a boundary lands inside one of the lists. </p><p>Filler F5.2 keeps successive blocks starting at a different offset down the page so a boundary lands inside one of the lists. </p><p>Filler F5.3 keeps successive blocks starting at a different offset down the page so a boundary lands inside one of the lists. </p><p>Filler F5.4 keeps successive blocks starting at a different offset down the page so a boundary lands inside one of the lists. </p><p>Filler F5.5 keeps successive blocks starting at a different offset down the page so a boundary lands inside one of the lists. </p><div class="result"> <div class="grid"> <div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked id="ul5" name="__tabbed_5" type="radio"><input id="ol5" name="__tabbed_5" type="radio"><div class="tabbed-labels"><label for="ul5">Unordered list</label><label for="ol5">Ordered list</label></div> <div class="tabbed-content"> <div class="tabbed-block"> <ul> <li>SEDA5 sagittis eleifend rutrum</li> <li>DONA5 vitae suscipit est</li> <li>NULA5 tempor lobortis orci</li> </ul> </div> <div class="tabbed-block"> <ol> <li>SEDB5 sagittis eleifend rutrum</li> <li>DONB5 vitae suscipit est</li> <li>NULB5 tempor lobortis orci</li> </ol> </div> </div> </div> <div class="language-text highlight"><span class="filename">Content tabs</span><pre><span></span><code><span id="doc-reference--grids--__span-5-1"><a id="doc-reference--grids--__codelineno-5-1" name="__codelineno-5-1" href="#doc-reference--grids--__codelineno-5-1"></a>=== "Unordered list"
+</span><span id="doc-reference--grids--__span-5-2"><a id="doc-reference--grids--__codelineno-5-2" name="__codelineno-5-2" href="#doc-reference--grids--__codelineno-5-2"></a>
+</span><span id="doc-reference--grids--__span-5-3"><a id="doc-reference--grids--__codelineno-5-3" name="__codelineno-5-3" href="#doc-reference--grids--__codelineno-5-3"></a>    * Sed sagittis eleifend rutrum
+</span><span id="doc-reference--grids--__span-5-4"><a id="doc-reference--grids--__codelineno-5-4" name="__codelineno-5-4" href="#doc-reference--grids--__codelineno-5-4"></a>    * Donec vitae suscipit est
+</span><span id="doc-reference--grids--__span-5-5"><a id="doc-reference--grids--__codelineno-5-5" name="__codelineno-5-5" href="#doc-reference--grids--__codelineno-5-5"></a>    * Nulla tempor lobortis orci
+</span><span id="doc-reference--grids--__span-5-6"><a id="doc-reference--grids--__codelineno-5-6" name="__codelineno-5-6" href="#doc-reference--grids--__codelineno-5-6"></a>
+</span><span id="doc-reference--grids--__span-5-7"><a id="doc-reference--grids--__codelineno-5-7" name="__codelineno-5-7" href="#doc-reference--grids--__codelineno-5-7"></a>=== "Ordered list"
+</span><span id="doc-reference--grids--__span-5-8"><a id="doc-reference--grids--__codelineno-5-8" name="__codelineno-5-8" href="#doc-reference--grids--__codelineno-5-8"></a>
+</span><span id="doc-reference--grids--__span-5-9"><a id="doc-reference--grids--__codelineno-5-9" name="__codelineno-5-9" href="#doc-reference--grids--__codelineno-5-9"></a>    1. Sed sagittis eleifend rutrum
+</span><span id="doc-reference--grids--__span-5-10"><a id="doc-reference--grids--__codelineno-5-10" name="__codelineno-5-10" href="#doc-reference--grids--__codelineno-5-10"></a>    2. Donec vitae suscipit est
+</span><span id="doc-reference--grids--__span-5-11"><a id="doc-reference--grids--__codelineno-5-11" name="__codelineno-5-11" href="#doc-reference--grids--__codelineno-5-11"></a>    3. Nulla tempor lobortis orci
+</span></code></pre></div> </div> </div><p>Filler F6.0 keeps successive blocks starting at a different offset down the page so a boundary lands inside one of the lists. </p><div class="result"> <div class="grid"> <div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked id="ul6" name="__tabbed_6" type="radio"><input id="ol6" name="__tabbed_6" type="radio"><div class="tabbed-labels"><label for="ul6">Unordered list</label><label for="ol6">Ordered list</label></div> <div class="tabbed-content"> <div class="tabbed-block"> <ul> <li>SEDA6 sagittis eleifend rutrum</li> <li>DONA6 vitae suscipit est</li> <li>NULA6 tempor lobortis orci</li> </ul> </div> <div class="tabbed-block"> <ol> <li>SEDB6 sagittis eleifend rutrum</li> <li>DONB6 vitae suscipit est</li> <li>NULB6 tempor lobortis orci</li> </ol> </div> </div> </div> <div class="language-text highlight"><span class="filename">Content tabs</span><pre><span></span><code><span id="doc-reference--grids--__span-5-1"><a id="doc-reference--grids--__codelineno-5-1" name="__codelineno-5-1" href="#doc-reference--grids--__codelineno-5-1"></a>=== "Unordered list"
+</span><span id="doc-reference--grids--__span-5-2"><a id="doc-reference--grids--__codelineno-5-2" name="__codelineno-5-2" href="#doc-reference--grids--__codelineno-5-2"></a>
+</span><span id="doc-reference--grids--__span-5-3"><a id="doc-reference--grids--__codelineno-5-3" name="__codelineno-5-3" href="#doc-reference--grids--__codelineno-5-3"></a>    * Sed sagittis eleifend rutrum
+</span><span id="doc-reference--grids--__span-5-4"><a id="doc-reference--grids--__codelineno-5-4" name="__codelineno-5-4" href="#doc-reference--grids--__codelineno-5-4"></a>    * Donec vitae suscipit est
+</span><span id="doc-reference--grids--__span-5-5"><a id="doc-reference--grids--__codelineno-5-5" name="__codelineno-5-5" href="#doc-reference--grids--__codelineno-5-5"></a>    * Nulla tempor lobortis orci
+</span><span id="doc-reference--grids--__span-5-6"><a id="doc-reference--grids--__codelineno-5-6" name="__codelineno-5-6" href="#doc-reference--grids--__codelineno-5-6"></a>
+</span><span id="doc-reference--grids--__span-5-7"><a id="doc-reference--grids--__codelineno-5-7" name="__codelineno-5-7" href="#doc-reference--grids--__codelineno-5-7"></a>=== "Ordered list"
+</span><span id="doc-reference--grids--__span-5-8"><a id="doc-reference--grids--__codelineno-5-8" name="__codelineno-5-8" href="#doc-reference--grids--__codelineno-5-8"></a>
+</span><span id="doc-reference--grids--__span-5-9"><a id="doc-reference--grids--__codelineno-5-9" name="__codelineno-5-9" href="#doc-reference--grids--__codelineno-5-9"></a>    1. Sed sagittis eleifend rutrum
+</span><span id="doc-reference--grids--__span-5-10"><a id="doc-reference--grids--__codelineno-5-10" name="__codelineno-5-10" href="#doc-reference--grids--__codelineno-5-10"></a>    2. Donec vitae suscipit est
+</span><span id="doc-reference--grids--__span-5-11"><a id="doc-reference--grids--__codelineno-5-11" name="__codelineno-5-11" href="#doc-reference--grids--__codelineno-5-11"></a>    3. Nulla tempor lobortis orci
+</span></code></pre></div> </div> </div></article></div>
+</section>
+</article>
+</body>
+</html>

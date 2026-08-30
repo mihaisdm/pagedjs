@@ -83,8 +83,22 @@ chunker detects with `left >= end`. Representative A4 numbers: content box `left
 
 **Order of operations, and the trap in it:** `findOverflow` → `createBreakToken` → `removeOverflow`
 (extract). The extraction can change the layout of what remains — for `table-layout: auto` it re-sizes the
-columns — which invalidates the measurement the break was computed from. Nothing re-validates the page
-afterwards. See "column freeze" below.
+columns — which invalidates the measurement the break was computed from. See "column freeze" below.
+
+`findBreakToken` now re-validates after extracting (`rebreakOffPageAfterExtraction`): if the reflow left
+text in the off-page column it breaks again, before that box, up to `MAX_OFFPAGE_REBREAKS` times. Each
+pass moves the break strictly earlier, so it terminates; a break that would rewind past the token the page
+started from is reported as `off-page-after-extraction` instead of looped.
+
+**A finished page must never be restyled — it cannot be repaired.** Removing a marker that caused a
+reflow does *not* restore the layout: Chromium's column distribution does not come back, so a page
+mutated after it was measured stays wrong. This is why `data-split-to` is applied by
+`Layout.markContinuedFragments` while the page is still being laid out, and re-measured before the
+overflow is removed, rather than by `Splits.afterPageLayout` while laying out the *next* page. Marking a
+finished page was silently losing content: on a Material for MkDocs manual it moved a list into the
+off-page column, where it printed on neither page. `Splits.afterPageLayout` still owns `data-split-original`
+and alignment, and now matches on the marker instead of applying it. **Anything else that depends on
+"this fragment continues overleaf" belongs in the same place, for the same reason.**
 
 **`textBreak`** returns an offset inside a text node. Horizontal overflow (`right > end`) walks letters to
 find the exact column that crosses. Vertical overflow breaks at the straddling **word's start**, because a

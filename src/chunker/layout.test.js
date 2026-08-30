@@ -205,3 +205,84 @@ describe("Layout.breakTokenRewinds", () => {
 		expect(rewinds({node: text, offset: 0}, {offset: 0})).toBe(false);
 	});
 });
+
+// The page area is a multi-column container whose second column is off the sheet,
+// so a box laid out there is invisible in the output and dropped from the PDF.
+// This predicate is what finds such a box after the overflow has been extracted —
+// the point at which the page can have become worse than it was measured to be —
+// and what it returns is the box the page will break before, so picking the wrong
+// one either loses content or moves content that was rendering fine.
+describe("Layout.firstOffPageElement", () => {
+
+	const BOUNDS = {left: 0, right: 100, top: 0, bottom: 100, width: 100, height: 100};
+
+	const firstOffPage = (rendered, bounds = BOUNDS) =>
+		Layout.prototype.firstOffPageElement.call(null, rendered, bounds);
+
+	// jsdom lays nothing out, so every rect is declared. `rects` is one entry per
+	// fragment, exactly as a real multi-column layout reports it.
+	const withRects = (element, rects) => {
+		const list = rects.map((rect) => ({
+			left: rect.left, right: rect.left + 10, top: 0, bottom: 10, width: 10, height: 10
+		}));
+		element.getClientRects = () => list;
+		return element;
+	};
+
+	const host = (html) => {
+		const root = document.createElement("div");
+		root.innerHTML = html;
+		Array.from(root.querySelectorAll("*")).forEach((el) => withRects(el, []));
+		return root;
+	};
+
+	it("returns a box laid out entirely in the off-page column", () => {
+		const root = host("<p id=\"a\">alpha</p><p id=\"b\">omega</p>");
+		withRects(root.querySelector("#a"), [{left: 0}]);
+		withRects(root.querySelector("#b"), [{left: 200}]);
+
+		expect(firstOffPage(root).id).toBe("b");
+	});
+
+	it("returns the outermost off-page box rather than its children", () => {
+		// The whole box has to move, and selecting a descendant would leave its
+		// ancestors' boundaries behind.
+		const root = host("<div id=\"outer\"><ul id=\"list\"><li id=\"item\">alpha</li></ul></div>");
+		["#outer", "#list", "#item"].forEach((sel) => withRects(root.querySelector(sel), [{left: 200}]));
+
+		expect(firstOffPage(root).id).toBe("outer");
+	});
+
+	it("walks through a box that generates no rects of its own", () => {
+		// display:contents, and the tab panel this bug was found through, produce
+		// no box to measure. Treating that as on-page would hide everything under it.
+		const root = host("<div id=\"boxless\"><p id=\"inner\">alpha</p></div>");
+		withRects(root.querySelector("#inner"), [{left: 200}]);
+
+		expect(firstOffPage(root).id).toBe("inner");
+	});
+
+	it("ignores a box that only straddles the column boundary", () => {
+		// Part of it is still rendering on this page. Breaking before it would move
+		// content that is not lost; the fragment that is lost is found deeper down.
+		const root = host("<div id=\"straddler\"><p id=\"tail\">alpha</p></div>");
+		withRects(root.querySelector("#straddler"), [{left: 0}, {left: 200}]);
+		withRects(root.querySelector("#tail"), [{left: 200}]);
+
+		expect(firstOffPage(root).id).toBe("tail");
+	});
+
+	it("ignores an off-page box that carries no text", () => {
+		const root = host("<p id=\"empty\">   </p>");
+		withRects(root.querySelector("#empty"), [{left: 200}]);
+
+		expect(firstOffPage(root)).toBeUndefined();
+	});
+
+	it("finds nothing when everything is inside the page", () => {
+		const root = host("<p id=\"a\">alpha</p>");
+		withRects(root.querySelector("#a"), [{left: 0}]);
+
+		expect(firstOffPage(root)).toBeUndefined();
+	});
+});

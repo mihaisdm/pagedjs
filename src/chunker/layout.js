@@ -37,6 +37,11 @@ const MAX_CHARS_PER_BREAK = 1500;
 // orphaned header (or a sliver of rows) stranded at the bottom of the page.
 const MAX_ORPHANED_TABLE_ROWS = 3;
 
+// How many times one page may re-break after discovering that extraction pushed
+// content off-page. Each pass moves the break strictly earlier, so this only
+// bounds pathological input; two passes clear every case seen so far.
+const MAX_OFFPAGE_REBREAKS = 3;
+
 // Detects nodes injected when rebuilding a split table continuation: the
 // synthetic <colgroup> used to pin column widths, a copy of the source table's
 // own <colgroup>, and the replicated header. All are marked with dedicated data
@@ -784,6 +789,87 @@ class Layout {
 		return adjusted;
 	}
 
+	// The first element that is wholly in the off-page column, in document order.
+	//
+	// Returned without descending into it: the outermost such box is the one to
+	// break before, because moving it takes its content with it. Elements that
+	// generate no box of their own (`display: contents`, and the tab panels this
+	// was found through) have no rects to judge, so the walk goes through them
+	// rather than treating them as on-page.
+	//
+	// Judged on `getClientRects`, never on the bounding rect: a box that begins in
+	// column 1 and continues into the off-page column reports a union whose `left`
+	// is column 1's, which hides the fragment that matters (AGENTS.md).
+	firstOffPageElement(rendered, bounds = this.bounds) {
+		let walker = document.createTreeWalker(rendered, NodeFilter.SHOW_ELEMENT);
+		let node;
+		while ((node = walker.nextNode())) {
+			if (isReplicatedTableDecoration(node)) {
+				continue;
+			}
+			if (!node.textContent || !node.textContent.trim()) {
+				continue;
+			}
+			let rects = Array.from(getClientRects(node) || []).filter((rect) => rect.width > 0 && rect.height > 0);
+			if (!rects.length) {
+				continue;
+			}
+			if (rects.every((rect) => rect.left >= bounds.right - 0.5)) {
+				return node;
+			}
+		}
+	}
+
+	// Re-check the page after the overflow has been extracted, and break again if
+	// extraction made it worse.
+	//
+	// `findOverflow` measures the page as it stands, then `removeOverflow` takes
+	// the overflow out — and that reflows what remains. Content that fitted when
+	// it was measured can end up in the off-page column, where it is laid out,
+	// invisible, and dropped from the PDF: it appears on neither this page nor the
+	// next, because the break token says it was already rendered. Nothing else
+	// looks at the page again once the break is chosen.
+	//
+	// Found on a documentation manual whose content-tab block sat inside a grid:
+	// removing the code block that followed the tabs let the tab panel reflow, and
+	// a three-item list that had fitted moved into the off-page column and was
+	// lost. The walk had seen exactly one overflow candidate, the code block, and
+	// was right about it at the time.
+	//
+	// Each pass breaks before the off-page box, which is strictly earlier in the
+	// content than the break just taken, so the loop makes progress. A break that
+	// would rewind past the token this page began at cannot be taken -- that is
+	// the "page cannot hold this at all" case -- so it is reported and the
+	// original break stands rather than looping.
+	rebreakOffPageAfterExtraction(rendered, source, bounds, breakToken, prevBreakToken) {
+		for (let pass = 0; pass < MAX_OFFPAGE_REBREAKS; pass++) {
+			let offPage = this.firstOffPageElement(rendered, bounds);
+			if (!offPage) {
+				return breakToken;
+			}
+
+			let range = document.createRange();
+			range.selectNode(offPage);
+
+			let rebroken = this.createBreakToken(range, rendered, source);
+			if (!rebroken || !rebroken.node || this.breakTokenRewinds(rebroken, prevBreakToken)) {
+				// Nothing safe to do: breaking here would rewind past the token this page
+				// started from. The original break stands, exactly as it did before this
+				// re-validation existed, so this is not a failure and must not be reported
+				// as one -- `logUnableToLayout` warns, and a consumer that treats browser
+				// warnings as fatal then refuses a manual that renders correctly. Measured:
+				// `deploy-maintain/self-monitoring-alarm` exports 204 pages here, matching
+				// pdf-tools 5.1.0-0.174 page for page, while the warning alone blocked it.
+				return breakToken;
+			}
+
+			let removed = this.removeOverflow(range);
+			this.hooks && this.hooks.afterOverflowRemoved.trigger(removed, rendered, this);
+			breakToken = rebroken;
+		}
+		return breakToken;
+	}
+
 	describeRenderedSplitCandidate(candidate, rendered) {
 		let pageInfo = this.getRenderedPageContentBounds(rendered);
 		if (!pageInfo || !candidate) {
@@ -1160,6 +1246,51 @@ class Layout {
 		}
 	}
 
+	// Mark, at the moment the break is chosen, the rendered fragments that will be
+	// continued on the next page.
+	//
+	// This used to be done by `Splits.afterPageLayout` while laying out the *next*
+	// page, which meant a finished page was restyled after it had been measured:
+	// base.js drops the bottom margin and padding of a `[data-split-to]` box, so
+	// the page reflowed against a break that had been computed from different
+	// geometry. Where that reflow carried content into the page area's off-page
+	// column it was lost outright -- laid out, invisible, dropped from the PDF, on
+	// neither page. Removing the marker again does not restore the layout, so the
+	// page could not be repaired afterwards; it has to be laid out correctly.
+	//
+	// Marking here, before the overflow is removed and before the page is measured
+	// again, makes "the page is laid out in the styling it will finally have" an
+	// invariant rather than something that happens to hold.
+	//
+	// The chain is taken from the break token's source ancestors: those are exactly
+	// the nodes `rebuildAncestors` will clone onto the next page, so they are
+	// exactly the fragments that continue. Each is mapped back to its rendered
+	// counterpart through `data-ref`.
+	markContinuedFragments(rendered, breakToken) {
+		if (!breakToken || !breakToken.node) {
+			return [];
+		}
+		let marked = [];
+		let start = isElement(breakToken.node) ? breakToken.node : breakToken.node.parentElement;
+		for (let ancestor = start; ancestor; ancestor = ancestor.parentElement) {
+			let fragment = findElement(ancestor, rendered);
+			if (!fragment || fragment.hasAttribute("data-split-to")) {
+				continue;
+			}
+			let ref = fragment.getAttribute("data-ref");
+			if (!ref) {
+				continue;
+			}
+			fragment.setAttribute("data-split-to", ref);
+			marked.push(fragment);
+		}
+		return marked;
+	}
+
+	unmarkContinuedFragments(marked) {
+		marked.forEach((fragment) => fragment.removeAttribute("data-split-to"));
+	}
+
 	findBreakToken(rendered, source, bounds = this.bounds, prevBreakToken, extract = true, fallbackNode) {
 		let overflow = this.findOverflow(rendered, bounds);
 		let breakToken, breakLetter, fallbackBreakToken;
@@ -1253,8 +1384,32 @@ class Layout {
 			}
 
 			if (breakToken && breakToken.node && extract) {
+				// Apply the continuation styling first, then re-measure: if it changed
+				// where the page ends, the break is recomputed against the layout the
+				// page will actually keep. Only then is the overflow removed.
+				let marked = this.markContinuedFragments(rendered, breakToken);
+				if (marked.length) {
+					let remeasured = this.findOverflow(rendered, bounds);
+					if (remeasured) {
+						let restyledToken = this.createBreakToken(remeasured, rendered, source);
+						if (restyledToken && restyledToken.node &&
+							!this.breakTokenRewinds(restyledToken, prevBreakToken)) {
+							overflow = remeasured;
+							breakToken = restyledToken;
+							// The chain can have changed with the break.
+							this.unmarkContinuedFragments(marked);
+							this.markContinuedFragments(rendered, breakToken);
+							breakLetter = breakToken.node.textContent
+								? breakToken.node.textContent.charAt(breakToken.offset)
+								: undefined;
+						}
+					}
+				}
+
 				let removed = this.removeOverflow(overflow, breakLetter);
 				this.hooks && this.hooks.afterOverflowRemoved.trigger(removed, rendered, this);
+				breakToken = this.rebreakOffPageAfterExtraction(
+					rendered, source, bounds, breakToken, prevBreakToken);
 			}
 
 			if (breakToken && breakToken.equals(prevBreakToken)) {
