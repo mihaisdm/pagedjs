@@ -841,6 +841,11 @@ class Layout {
 	// would rewind past the token this page began at cannot be taken -- that is
 	// the "page cannot hold this at all" case -- so it is reported and the
 	// original break stands rather than looping.
+	//
+	// A pass removes everything from the box to the end of the page, not the box
+	// alone: the token it returns is where the next page resumes, so a box removed
+	// ahead of it would be printed nowhere. Pinned by
+	// `Layout.rebreakOffPageAfterExtraction` in `layout.test.js`.
 	rebreakOffPageAfterExtraction(rendered, source, bounds, breakToken, prevBreakToken) {
 		for (let pass = 0; pass < MAX_OFFPAGE_REBREAKS; pass++) {
 			let offPage = this.firstOffPageElement(rendered, bounds);
@@ -848,8 +853,14 @@ class Layout {
 				return breakToken;
 			}
 
+			// From the box to the end of the page, the same range `findOverflow`
+			// builds for an ordinary break — `selectNode` only sets the start.
+			// Taking the box alone and then resuming *at* it leaves everything the
+			// earlier passes removed on no page at all: each pass would move the
+			// resume point forward over content it had already extracted.
 			let range = document.createRange();
 			range.selectNode(offPage);
+			range.setEndAfter(rendered.lastChild);
 
 			let rebroken = this.createBreakToken(range, rendered, source);
 			if (!rebroken || !rebroken.node || this.breakTokenRewinds(rebroken, prevBreakToken)) {

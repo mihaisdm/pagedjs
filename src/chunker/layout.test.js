@@ -286,3 +286,78 @@ describe("Layout.firstOffPageElement", () => {
 		expect(firstOffPage(root)).toBeUndefined();
 	});
 });
+
+// `rebreakOffPageAfterExtraction` is the page's last line of defence: once the
+// overflow has been taken out, what remains can reflow into the off-page column,
+// and this loop is what notices and breaks again. Every pass must leave the boxes
+// it removes reachable from the break token it returns — that token is where the
+// next page resumes, so anything removed *before* it is on no page at all.
+//
+// Reproduces, in the small, what the browser does on
+// `specs/splits/tables/split-table-column-freeze-rounding.html` with the column
+// freeze's undo disabled:
+//
+//     pass=0 offPageNode=TR text="r28v28w28"  removed="r28v28w28"  breakToken -> r28
+//     pass=1 offPageNode=TR text="r29v29w29"  removed="r29v29w29"  breakToken -> r29
+//     pass=2 offPageNode=TR text="r30v30w30"  removed="r30v30w30"  breakToken -> r30
+//
+// The next page resumed at r30, so r28 and r29 were printed nowhere. This is the
+// one defect in this area that is content *gone* rather than content misplaced,
+// so no geometric census of the finished document can see it.
+describe("Layout.rebreakOffPageAfterExtraction", () => {
+
+	const BOUNDS = {left: 0, right: 100, top: 0, bottom: 100, width: 100, height: 100};
+
+	// jsdom lays nothing out, so each box declares its own rects: `left: 0` for a
+	// box on the page, `left: 200` for one in the off-page column.
+	const withRects = (element, left) => {
+		element.getClientRects = () => (left === null ? [] : [
+			{left: left, right: left + 10, top: 0, bottom: 10, width: 10, height: 10}
+		]);
+		return element;
+	};
+
+	// The page, and the document it was rendered from. `createBreakToken` resolves
+	// a rendered box to its source twin through `data-ref`; here the ids stand in
+	// for that mapping, which is all this loop uses it for.
+	const page = (ids, offPage) => {
+		const markup = ids.map((id) => `<p id="${id}">${id}</p>`).join("");
+		const rendered = document.createElement("div");
+		const source = document.createElement("div");
+		rendered.innerHTML = markup;
+		source.innerHTML = markup + "<p id=\"next\">next</p>";
+		withRects(rendered, null);
+		ids.forEach((id) => withRects(rendered.querySelector("#" + id), offPage.includes(id) ? 200 : 0));
+		return {rendered, source};
+	};
+
+	const layout = (source) => {
+		const it = Object.create(Layout.prototype);
+		it.settings = {};
+		it.hooks = undefined;
+		it.createBreakToken = (range) => {
+			const box = range.startContainer.childNodes[range.startOffset];
+			return {node: source.querySelector("#" + box.id), offset: 0};
+		};
+		return it;
+	};
+
+	it("leaves no box behind the token the next page resumes at", () => {
+		// One box on the page and three that reflowed off it — more than one pass'
+		// worth, which is the case that has never been exercised.
+		const {rendered, source} = page(["keep", "a", "b", "c"], ["a", "b", "c"]);
+		const started = {node: source.querySelector("#keep"), offset: 0};
+
+		const token = Layout.prototype.rebreakOffPageAfterExtraction.call(
+			layout(source), rendered, source, BOUNDS, started, started);
+
+		const removed = ["a", "b", "c"].filter((id) => !rendered.querySelector("#" + id));
+		const resumesAt = token.node;
+		const stranded = removed.filter((id) => {
+			const position = resumesAt.compareDocumentPosition(source.querySelector("#" + id));
+			return !!(position & Node.DOCUMENT_POSITION_PRECEDING);
+		});
+
+		expect(stranded).toEqual([]);
+	});
+});
