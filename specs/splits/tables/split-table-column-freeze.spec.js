@@ -171,3 +171,59 @@ describe("split table column freeze (table with a page-taller row)", () => {
 		expect(missing).toEqual([]);
 	});
 });
+
+describe("split table column freeze (fractional column widths)", () => {
+	let page;
+
+	// The freeze measures each column with `Math.round`, so a column that was
+	// laid out at a fractional width is written back up to half a pixel narrower
+	// than it was. Its contract is to pin the geometry the break was computed
+	// from, and half a pixel breaks it: a cell whose content exactly filled the
+	// column wraps one line further, every row below it moves down, and the last
+	// row no longer fits the content box. The page area is a multi-column
+	// container, so that row does not clip at the bottom — it is laid out whole
+	// in the off-page column, where the PDF renderer culls it. It then appears on
+	// neither this page nor the next.
+	//
+	// Measured on data-reference/eodr-formats/eoroaming-4-0 page 14: clean
+	// immediately after `removeOverflow`, and holding a whole lost row directly
+	// after the freeze, which took columns [31.5, 112.64, 77.28, …] to
+	// [32, 113, 77, …] and grew the table 983.73px -> 994.02px against 994.02px
+	// of room.
+
+	beforeAll(async () => {
+		page = await loadPage("splits/tables/split-table-column-freeze-rounding.html");
+		return page.rendered;
+	}, TIMEOUT);
+
+	afterAll(async () => {
+		if (!DEBUG) {
+			await page.close();
+		}
+	});
+
+	it("splits the table across more than one page (precondition)", async () => {
+		const report = (await pageReport(page)).filter((p) => p.hasTable);
+		expect(report.length).toBeGreaterThan(1);
+		expect(report[0].colWidths.length).toBe(4);
+	});
+
+	it("never leaves text in an off-page column or below the content box", async () => {
+		const stray = (await pageReport(page))
+			.filter((p) => p.offPage.length || p.belowBox.length)
+			.map((p) => ({ pageIndex: p.pageIndex, offPage: p.offPage, belowBox: p.belowBox }));
+		expect(stray).toEqual([]);
+	});
+
+	it("still renders every row", async () => {
+		const missing = await page.evaluate(() => {
+			const rendered = document.querySelector(".pagedjs_pages").innerText;
+			const absent = [];
+			for (let r = 1; r <= 70; r++) {
+				if (!new RegExp("(^|\\s)r" + r + "($|\\s)").test(rendered)) absent.push("r" + r);
+			}
+			return absent;
+		});
+		expect(missing).toEqual([]);
+	});
+});

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta http-equiv="Content-Type" content="text/html;charset=utf-8"/>
+	<title>Split table column freeze rounding</title>
+	<script src="../../../dist/paged.polyfill.js"></script>
+	<style>
+		@page {
+			size: A4;
+			margin: 16mm 16mm 18mm 18mm;
+		}
+
+		body { margin: 0; font-family: sans-serif; }
+
+		/* Columns are declared at a fractional width, which is what the freeze
+		   rounds. table-layout is already fixed, so the freeze changes nothing
+		   except the widths it writes back. */
+		table {
+			table-layout: fixed;
+			border-collapse: collapse;
+			width: 601.8px;
+		}
+
+		td {
+			width: 150.45px;
+			padding: 0;
+			border: 0;
+			font-size: 12px;
+			line-height: 18px;
+			vertical-align: top;
+		}
+
+		/* The width that decides whether the row is one line or two is carried by
+		   boxes measured in px, not by glyphs, so the wrap does not depend on the
+		   font the test image happens to have. The pair is 150.2px wide with a
+		   break opportunity between them: it fits the declared 150.45px column and
+		   does not fit the 150px the freeze rounds it to. */
+		.pair span {
+			display: inline-block;
+			width: 75.1px;
+			height: 18px;
+			vertical-align: top;
+			background: #e3e3e3;
+		}
+	</style>
+</head>
+<body>
+<table>
+	<tbody id="rows">
+	<!-- rows injected below -->
+	</tbody>
+</table>
+
+<script>
+	const tbody = document.getElementById("rows");
+	const ROWS = 70;
+
+	for (let r = 1; r <= ROWS; r++) {
+		const tr = document.createElement("tr");
+		const cell = (html, cls) => {
+			const td = document.createElement("td");
+			if (cls) td.className = cls;
+			td.innerHTML = html;
+			tr.appendChild(td);
+		};
+
+		cell("r" + r);
+		cell("<span></span><wbr><span></span>", "pair");
+		cell("v" + r);
+		cell("w" + r);
+
+		tbody.appendChild(tr);
+	}
+</script>
+</body>
+</html>

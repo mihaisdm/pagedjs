@@ -136,7 +136,12 @@ from the chunker's hook list, so using it requires adding both the declaration a
   reflow an earlier row. Applying after extraction is deliberate — mutating the table before
   `removeOverflow` risks corrupting the overflow `Range` if a boundary container is the `<table>` itself.
   Gated by the same rowspan / colspan / column-count / tall-row checks, evaluated against the **source**
-  table.
+  table. The widths are **rounded**, so pinning is not free: a column laid out at a fractional width comes
+  back up to half a pixel narrower, a cell that exactly filled it wraps one line further, and the last row
+  leaves the content box. `afterOverflowRemoved` therefore counts `offPageColumnLines` either side of the
+  freeze and calls `unfreezeTableColumns` when the count rises — so the freeze is kept only while it costs
+  nothing. Do not "fix" this by not rounding: any width that does not reproduce the measured one exactly
+  lands in the same regime.
 - `rebuildSplitTable` (`src/utils/dom.js`) replicates `<thead>` and adds the pinned `<colgroup>` on
   continuations. The table width must be the **sum of the captured column widths**, not the bounding-rect
   width (which measured 1831px while the content was 377px).

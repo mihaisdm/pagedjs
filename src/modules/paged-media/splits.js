@@ -1,6 +1,10 @@
 import Handler from "../handler.js";
 import { SPLIT_TABLE_COL_WIDTHS } from "../../utils/dom.js";
 
+// The inline styles `freezeTableColumns` overwrites, kept on the table so the
+// freeze can be taken back off again if it turns out to have cost content.
+const FROZEN_STYLES = Symbol("pagedjs-frozen-table-styles");
+
 class Splits extends Handler {
 	constructor(chunker, polisher, caller) {
 		super(chunker, polisher, caller);
@@ -129,6 +133,24 @@ class Splits extends Handler {
 		this.pendingColumnFreeze = { table: renderedTable, colWidths };
 	}
 
+	// The freeze is only worth having while it costs nothing. Each column is
+	// measured with `Math.round`, so a column laid out at a fractional width is
+	// written back up to half a pixel narrower than it was — and the freeze's
+	// whole premise is that it writes the widths the fragment already had. Half a
+	// pixel is enough: a cell whose content exactly filled its column wraps one
+	// line further, every row below it moves down, and the last row no longer fits
+	// the content box. Page content is a multi-column container, so that row is
+	// not clipped at the bottom — it is laid out whole in the off-page column,
+	// culled by the PDF renderer, and lost from this page and the next alike.
+	//
+	// Measured on data-reference/eodr-formats/eoroaming-4-0 page 14: no off-page
+	// content at all immediately after `removeOverflow`, and a whole row of it
+	// directly after the freeze, which took columns [31.5, 112.64, 77.28, …] to
+	// [32, 113, 77, …] and grew the table from 983.73px to 994.02px with 994.02px
+	// of room. Rounding is not the only way this can happen, so the check is on
+	// the outcome rather than on the arithmetic: freeze, look, and take it back
+	// off if the page came out worse. Unpinned columns may drift between
+	// fragments, which is cosmetic; the text is not.
 	afterOverflowRemoved(removed, rendered, layout) {
 		let pending = this.pendingColumnFreeze;
 		this.pendingColumnFreeze = undefined;
@@ -137,7 +159,15 @@ class Splits extends Handler {
 			return;
 		}
 
-		this.freezeTableColumns(pending.table, pending.colWidths);
+		let before = layout ? layout.offPageColumnLines(rendered).length : 0;
+
+		if (!this.freezeTableColumns(pending.table, pending.colWidths)) {
+			return;
+		}
+
+		if (layout && layout.offPageColumnLines(rendered).length > before) {
+			this.unfreezeTableColumns(pending.table);
+		}
 	}
 
 	// Widths measured from a rendered fragment can be far wider than the page: a
@@ -166,13 +196,15 @@ class Splits extends Handler {
 	// data-split-table-colgroup attribute the rebuilt continuations use, so the
 	// overflow/break machinery keeps ignoring the injected colgroup (it carries no
 	// data-ref and must never be chosen as a break point).
+	// Returns true when the table was pinned, so the caller can check what the
+	// pinning did to the page and undo it.
 	freezeTableColumns(table, colWidths) {
 		if (table.querySelector("colgroup[data-split-table-colgroup]")) {
-			return;
+			return false;
 		}
 
 		if (!this.pinnedWidthFitsPage(table, colWidths)) {
-			return;
+			return false;
 		}
 
 		let colgroup = document.createElement("colgroup");
@@ -183,10 +215,38 @@ class Splits extends Handler {
 			colgroup.appendChild(col);
 		});
 
+		table[FROZEN_STYLES] = {
+			tableLayout: table.style.tableLayout,
+			width: table.style.width,
+			maxWidth: table.style.maxWidth
+		};
+
 		table.insertBefore(colgroup, table.firstChild);
 		table.style.tableLayout = "fixed";
 		table.style.width = colWidths.reduce((sum, width) => sum + width, 0) + "px";
 		table.style.maxWidth = "none";
+
+		return true;
+	}
+
+	// Undo exactly what `freezeTableColumns` wrote. Only a table this handler
+	// pinned a moment ago carries FROZEN_STYLES, so a colgroup `rebuildSplitTable`
+	// put on a continuation fragment is never touched.
+	unfreezeTableColumns(table) {
+		let previous = table[FROZEN_STYLES];
+		if (!previous) {
+			return;
+		}
+		table[FROZEN_STYLES] = undefined;
+
+		let colgroup = table.querySelector("colgroup[data-split-table-colgroup]");
+		if (colgroup) {
+			colgroup.remove();
+		}
+
+		table.style.tableLayout = previous.tableLayout;
+		table.style.width = previous.width;
+		table.style.maxWidth = previous.maxWidth;
 	}
 
 	captureSplitTableGeometry(pageElement, breakToken, chunker) {
